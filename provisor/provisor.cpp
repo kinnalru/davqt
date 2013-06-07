@@ -687,7 +687,7 @@ void provisor::buildReport()
                 if(i>0)
                     campItem->setTextAlignment(i,Qt::AlignRight|Qt::AlignVCenter);
             }//for
-b
+
             font.setBold(true);
             if(lifetime<=ALARM_TIME)
             {
