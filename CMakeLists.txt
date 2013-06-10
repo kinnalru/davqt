@@ -22,6 +22,7 @@ set(MOC
 
 set(SOURCES
     main.cpp
+    session.cpp
 )
 
 set(IFACES

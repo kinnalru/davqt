@@ -8,6 +8,10 @@
 #include <memory>
 #include <string.h>
 #include <assert.h>
+#include <libgen.h>
+#include <stdio.h>
+#include <fcntl.h> 
+
 
 #include <neon/ne_alloc.h>
 #include <neon/ne_auth.h>
@@ -25,6 +29,9 @@
 
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/concept_check.hpp>
+
+#include <session.h>
 
 static char *username = "";
 static char *password = "";
@@ -79,7 +86,7 @@ ssl_verify(void *userdata, int failures, const ne_ssl_certificate *cert)
     printf(("  subject:     %s"), subject);
     printf("\n");
     printf(("  identity:    %s"), ne_ssl_cert_identity(cert));
-    printf("\n");
+    printf("\n");//     ne_session* session = ne_session_create("https", "webdav.yandex.ru", ne_uri_defaultport("https"));
     printf(("  fingerprint: %s"), digest);
     printf("\n");
         printf(("You only should accept this certificate, if you can\n"
@@ -117,52 +124,9 @@ ssl_verify(void *userdata, int failures, const ne_ssl_certificate *cert)
     return ret;
 }
 
-enum {
-    ETAG = 0,
-    LENGTH,
-    CREATION,
-    MODIFIED,
-    TYPE,
-    EXECUTE,
-    END
-};
 
-static const std::vector<ne_propname> prop_names = [] {
-    std::vector<ne_propname> v(END + 1);
-    v[ETAG]     = {"DAV:", "getetag"};
-    v[LENGTH]   = {"DAV:", "getcontentlength"};
-    v[CREATION] ={"DAV:", "creationdate"};
-    v[MODIFIED] = {"DAV:", "getlastmodified"};
-    v[TYPE]     = {"DAV:", "resourcetype"};
-    v[EXECUTE]  = {"http://apache.org/dav/props/", "executable"};
-    v[END]      = {NULL, NULL}; 
-    return v;
-} ();
 
-static const std::vector<ne_propname> anonymous_prop_names = [] {
-    std::vector<ne_propname> v = prop_names;
-    BOOST_FOREACH(auto& pn, v) pn.nspace = NULL;
-    return v;
-} ();
 
-enum exec_e {
-    none,
-    exec,
-    no_exec,
-};
-
-struct resource_t {
-    std::string path;   /* The unescaped path of the resource. */
-    std::string name;   /* The name of the file or directory. Only the last
-                           component (no path), no slashes. */
-    char *etag;         /* The etag string, including quotation characters,
-                           but without the mark for weak etags. */
-    off_t size;         /* File size in bytes (regular files only). */
-    time_t ctime;       /* Creation date. */
-    time_t mtime;       /* Date of last modification. */
-    bool dir;           
-    exec_e exec;        
-};
 
 struct dav_props {
     char *path;         /* The unescaped path of the resource. */
@@ -185,8 +149,7 @@ typedef struct {
     dav_props *results;         /* Start of the linked list of dav_props. */
 } propfind_context;
 
-void
-dav_delete_props(dav_props *props)
+void dav_delete_props(dav_props *props)
 {
     if (props->path)
         free(props->path);
@@ -195,123 +158,6 @@ dav_delete_props(dav_props *props)
     if (props->etag)
         free(props->etag);
     free(props);
-}
-
-static void
-prop_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
-{
-    propfind_context *ctx = (propfind_context *) userdata;
-    if (!ctx || !uri || !uri->path || !set)
-        return;
-
-    char *tmp_path = (char *) ne_malloc(strlen(uri->path) + 1);
-    const char *from = uri->path;
-
-    std::cerr << "prop_result path:" << uri->path << std::endl;
-    
-    char *to = tmp_path;
-    while (*from) {
-        while (*from == '/' && *(from + 1) == '/')
-            from++;
-        *to++ = *from++;
-    }
-    *to = 0;
-    dav_props *result = (dav_props*)ne_calloc(sizeof(dav_props));
-    result->path = ne_path_unescape(tmp_path);
-    free (tmp_path);
-
-    if (!result->path || strlen(result->path) < 1) {
-        dav_delete_props(result);
-        return;
-    }
-
-    const char *data;
-
-    data = ne_propset_value(set, &prop_names[TYPE]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[TYPE]);
-    if (data && strstr(data, "collection"))
-            result->is_dir = 1;
-
-    if (*(result->path + strlen(result->path) - 1) == '/') {
-        if (!result->is_dir)
-            *(result->path + strlen(result->path) - 1) = '\0';
-    } else {
-        if (result->is_dir) {
-            char *tmp = ne_concat(result->path, "/", NULL);
-            free(result->path);
-            result->path = tmp;
-        }
-    }
-
-    if (strstr(result->path, ctx->path) != result->path) {
-        dav_delete_props(result);
-        return;
-    }
-
-    if (strcmp(result->path, ctx->path) == 0) {
-        result->name = ne_strdup("");
-    } else {
-        if (strlen(result->path) < (strlen(ctx->path) + result->is_dir + 1)) {
-            dav_delete_props(result);
-            return;
-        }
-        result->name = ne_strndup(result->path + strlen(ctx->path),
-                                  strlen(result->path) - strlen(ctx->path)
-                                  - result->is_dir);
-//         replace_slashes(&result->name);
-//         if (from_server_enc)
-//             convert(&result->name, from_server_enc);
-    }
-
-    data = ne_propset_value(set, &prop_names[ETAG]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[ETAG]);
-//     result->etag = normalize_etag(data);
-
-    data = ne_propset_value(set, &prop_names[LENGTH]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[LENGTH]);
-    if (data)
-#if _FILE_OFFSET_BITS == 64
-         result->size = strtoll(data, NULL, 10);
-#else /* _FILE_OFFSET_BITS != 64 */
-         result->size = strtol(data, NULL, 10);
-#endif /* _FILE_OFFSET_BITS != 64 */
-
-    data = ne_propset_value(set, &prop_names[CREATION]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[CREATION]);
-    if (data) {
-        result->ctime = ne_iso8601_parse(data);
-        if (result->ctime == (time_t) -1)
-            result->ctime = ne_httpdate_parse(data);
-        if (result->ctime == (time_t) -1)
-            result->ctime = 0;
-    }
-
-    data = ne_propset_value(set, &prop_names[MODIFIED]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[MODIFIED]);
-    if (data) {
-        result->mtime = ne_httpdate_parse(data);
-        if (result->mtime == (time_t) -1)
-            result->mtime = ne_iso8601_parse(data);
-        if (result->mtime == (time_t) -1)
-            result->mtime = 0;
-    }
-
-    data = ne_propset_value(set, &prop_names[EXECUTE]);
-    if (!data)
-        data = ne_propset_value(set, &anonymous_prop_names[EXECUTE]);
-    if (!data) {
-        result->is_exec = -1;
-    } else if (*data == 'T') {
-        result->is_exec = 1;
-    }
-
-    result->next = ctx->results;
-    ctx->results = result;
 }
 
 static int
@@ -441,268 +287,126 @@ ls_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
     return;
 }
 
-static void
-cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
-{
-    std::vector<resource_t>* res = reinterpret_cast<std::vector<resource_t>*>(userdata); 
-
-    assert(res);
-    assert(uri);
-    assert(set);
-    
-    //FIXME check
-    //if (!res || !uri || !uri->path || !set) return;
-
-    resource_t resource;
-    
-    resource.path = uri->path;
-    
-    resource.name = resource.path;
-    
-    
-    const char *data;
-
-    data = ne_propset_value(set, &prop_names[TYPE]);
-    if (!data) data = ne_propset_value(set, &anonymous_prop_names[TYPE]);
-    
-    resource.dir = (data && strstr(data, "collection"));
-    
-    data = ne_propset_value(set, &prop_names[LENGTH]);
-    if (!data) data = ne_propset_value(set, &anonymous_prop_names[LENGTH]);
-    if (data) {
-        resource.size = boost::lexical_cast<off_t>(data);
-    }
-
-    
-    
-    res->push_back(resource);
-    
-    return;
-    
-//     res->push_back(uri->path);
-    
-//     return;
-//     
-//     char *tmp_path = (char *) ne_malloc(strlen(uri->path) + 1);
-//     const char *from = uri->path;
-// 
-//     std::cerr << "prop_result path:" << uri->path << std::endl;
-//     
-//     char *to = tmp_path;
-//     while (*from) {
-//         while (*from == '/' && *(from + 1) == '/')
-//             from++;
-//         *to++ = *from++;
-//     }
-//     *to = 0;
-//     dav_props *result = (dav_props*)ne_calloc(sizeof(dav_props));
-//     result->path = ne_path_unescape(tmp_path);
-//     free (tmp_path);
-// 
-//     if (!result->path || strlen(result->path) < 1) {
-//         dav_delete_props(result);
-//         return;
-//     }
-
-
-//     if (*(result->path + strlen(result->path) - 1) == '/') {
-//         if (!result->is_dir)
-//             *(result->path + strlen(result->path) - 1) = '\0';
-//     } else {
-//         if (result->is_dir) {
-//             char *tmp = ne_concat(result->path, "/", NULL);
-//             free(result->path);
-//             result->path = tmp;
-//         }
-//     }
-
-//     if (strstr(result->path, ctx->path) != result->path) {
-//         dav_delete_props(result);
-//         return;
-//     }
-
-//     if (strcmp(result->path, ctx->path) == 0) {
-//         result->name = ne_strdup("");
-//     } else {
-//         if (strlen(result->path) < (strlen(ctx->path) + result->is_dir + 1)) {
-//             dav_delete_props(result);
-//             return;
-//         }
-//         result->name = ne_strndup(result->path + strlen(ctx->path),
-//                                   strlen(result->path) - strlen(ctx->path)
-//                                   - result->is_dir);
-//         replace_slashes(&result->name);
-//         if (from_server_enc)
-//             convert(&result->name, from_server_enc);
-//     }
-
-//     data = ne_propset_value(set, &prop_names[ETAG]);
-//     if (!data)
-//         data = ne_propset_value(set, &anonymous_prop_names[ETAG]);
-// //     result->etag = normalize_etag(data);
-
-//     data = ne_propset_value(set, &prop_names[CREATION]);
-//     if (!data)
-//         data = ne_propset_value(set, &anonymous_prop_names[CREATION]);
-//     if (data) {
-//         result->ctime = ne_iso8601_parse(data);
-//         if (result->ctime == (time_t) -1)
-//             result->ctime = ne_httpdate_parse(data);
-//         if (result->ctime == (time_t) -1)
-//             result->ctime = 0;
-//     }
-// 
-//     data = ne_propset_value(set, &prop_names[MODIFIED]);
-//     if (!data)
-//         data = ne_propset_value(set, &anonymous_prop_names[MODIFIED]);
-//     if (data) {
-//         result->mtime = ne_httpdate_parse(data);
-//         if (result->mtime == (time_t) -1)
-//             result->mtime = ne_iso8601_parse(data);
-//         if (result->mtime == (time_t) -1)
-//             result->mtime = 0;
-//     }
-// 
-//     data = ne_propset_value(set, &prop_names[EXECUTE]);
-//     if (!data)
-//         data = ne_propset_value(set, &anonymous_prop_names[EXECUTE]);
-//     if (!data) {
-//         result->is_exec = -1;
-//     } else if (*data == 'T') {
-//         result->is_exec = 1;
-//     }
-// 
-//     result->next = ctx->results;
-//     ctx->results = result;
-}
-
-std::vector<std::string> get_ls(ne_session* session, const std::string& path) {
-    
-    std::shared_ptr<ne_propfind_handler> ph(
-        ne_propfind_create(session, path.c_str(), NE_DEPTH_ONE),
-        ne_propfind_destroy            
-    );
-
-    std::vector<std::string> res;
-
-    if (int err = ne_propfind_named(ph.get(), &prop_names[0], ls_result, &res)) {
-        std::cerr << "Error:" << err << std::endl;
-        throw std::runtime_error(ne_get_error(session));
-    }
-    return res;
-}
-
-std::vector<resource_t> get_res(ne_session* session, const std::string& path) {
-    
-    std::shared_ptr<ne_propfind_handler> ph(
-        ne_propfind_create(session, path.c_str(), NE_DEPTH_ONE),
-        ne_propfind_destroy            
-    );
-
-    std::vector<resource_t> res;
-
-    if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &res)) {
-        std::cerr << "Error:" << err << std::endl;
-//         throw std::runtime_error(ne_get_error(session));
-    }
-    return res;
-}
-
 int main(int argc, char** argv)
 {
-    if (ne_sock_init() != 0)
-        throw std::runtime_error("Can't init");
-
-    std::cerr << "1" << std::endl;
+    try {
     
-    ne_session* session = ne_session_create("https", "webdav.yandex.ru", ne_uri_defaultport("https"));
+        if (ne_sock_init() != 0)
+            throw std::runtime_error("Can't init");
 
-    std::cerr << "2" << std::endl;
-    
-    ne_add_server_auth(session, NE_AUTH_ALL, auth, NULL);
+        std::cerr << "1" << std::endl;
+        
+        
+        session_t session("https", "webdav.yandex.ru");
+        
+        std::cerr << "2" << std::endl;
+        
+        ne_add_server_auth(session.session(), NE_AUTH_ALL, auth, NULL);
 
-    std::cerr << "3" << std::endl;
-
-
-    ne_ssl_set_verify(session, ssl_verify, NULL);
-    ne_ssl_trust_default_ca(session);
-
-    std::cerr << "4" << std::endl;
-    
-
-    char *spath = ne_path_escape("/");
-    ne_server_capabilities caps = {0, 0, 0};
-    int ret = ne_options(session, spath, &caps);
-    
-    if (ret) {
-//         get_error(session, ret, "PROPFIND");
-        std::cerr << ne_get_error(session) << std::endl;;
-        throw std::runtime_error("Can't ne_options");
-    }
+        std::cerr << "3" << std::endl;
 
 
-    if (caps.dav_class1 ) {
-        std::cerr << "class 1" << std::endl;
-    }
+        ne_ssl_set_verify(session.session(), ssl_verify, NULL);
+        ne_ssl_trust_default_ca(session.session());
 
-    if (caps.dav_class2 ) {
-        std::cerr << "class 2" << std::endl;
-    }
-    
+        std::cerr << "4" << std::endl;
+        
 
-    free(spath);
-
-
-    propfind_context ctx;
-    ctx.path = "/";
-    ctx.results = NULL;
-
-    std::cerr << "10" << std::endl;
-    
-    char *espath = ne_path_escape("/games");
-
-    auto l = get_ls(session, espath);
-    
-    BOOST_FOREACH(auto s, l) {
-        std::cerr << "file:" << s << std::endl;
-    }
-    
-    BOOST_FOREACH(auto s, get_res(session, espath)) {
-        std::cerr << "file path:" << s.path << std::endl;
-        std::cerr << "file name:" << s.name << std::endl;
-        std::cerr << "file stat:" << s.size << std::endl;
-    }
-    
-//     std::cerr << "11" << std::endl;
-//     
-//     ne_propfind_handler *ph = ne_propfind_create(session, espath, NE_DEPTH_ONE);
-// 
-//     std::cerr << "12" << std::endl;
-//     
-//     ret = ne_propfind_named(ph, prop_names, prop_result, &ctx);
-// 
-//     std::cerr << "13" << std::endl;
-//     
-// //     ret = get_error(ret, "PROPFIND");
-//     ne_propfind_destroy(ph);
-    free(espath);
-
-    std::cerr << "14" << std::endl;
-    
-    if (ret) {
-        std::cerr << "15" << std::endl;
-        while(ctx.results) {
-            std::cerr << "16" << std::endl;
-            dav_props *tofree = ctx.results;
-            std::cerr << "17" << std::endl;
-            ctx.results = ctx.results->next;
-            std::cerr << "18" << std::endl;
-            dav_delete_props(tofree);
-            std::cerr << "19" << std::endl;
+        char *spath = ne_path_escape("/");
+        ne_server_capabilities caps = {0, 0, 0};
+        int ret = ne_options(session.session(), spath, &caps);
+        
+        if (ret) {
+    //         get_error(session, ret, "PROPFIND");
+            std::cerr << ne_get_error(session.session()) << std::endl;;
+            throw std::runtime_error("Can't ne_options");
         }
-    }
 
-    std::cerr << "20" << std::endl;
+
+        if (caps.dav_class1 ) {
+            std::cerr << "class 1" << std::endl;
+        }
+
+        if (caps.dav_class2 ) {
+            std::cerr << "class 2" << std::endl;
+        }
+        
+
+        free(spath);
+
+
+        propfind_context ctx;
+        ctx.path = "/";
+        ctx.results = NULL;
+
+        std::cerr << "10" << std::endl;
+        
+        char *espath = ne_path_escape("/testf/games");
+
+        auto l = session.ls(espath);
+        
+        std::cerr << "a1" << std::endl;
+        BOOST_FOREACH(auto s, l) {
+            std::cerr << "file:" << s << std::endl;
+        }
+        
+        std::cerr << "a2" << std::endl;
+        
+//         BOOST_FOREACH(auto s, get_res(session.session(), espath)) {
+//             std::cerr << "file path:" << s.path << std::endl;
+//             std::cerr << "file name:" << s.name << std::endl;
+// //             std::cerr << "file stat:" << s.size << std::endl;
+// //             std::cerr << "file dir:" << s.dir << std::endl;
+// //             std::cerr << "file ctime:" << s.ctime << std::endl;
+// //             std::cerr << "file mtime:" << s.mtime << std::endl;
+// //             std::cerr << "file exec:" << s.exec << std::endl;
+// //             std::cerr << "file etag:" << s.etag << std::endl;
+//         }
+//         
+        std::cerr << "a3" << std::endl;
+        
+    //     std::cerr << "11" << std::endl;
+    //     
+    //     ne_propfind_handler *ph = ne_propfind_create(session, espath, NE_DEPTH_ONE);
+    // 
+    //     std::cerr << "12" << std::endl;
+    //     
+    //     ret = ne_propfind_named(ph, prop_names, prop_result, &ctx);
+    // 
+    //     std::cerr << "13" << std::endl;
+    //     
+    // //     ret = get_error(ret, "PROPFIND");
+    //     ne_propfind_destroy(ph);
+        free(espath);
+
+        std::cerr << "14" << std::endl;
+        
+        if (ret) {
+            std::cerr << "15" << std::endl;
+            while(ctx.results) {
+                std::cerr << "16" << std::endl;
+                dav_props *tofree = ctx.results;
+                std::cerr << "17" << std::endl;
+                ctx.results = ctx.results->next;
+                std::cerr << "18" << std::endl;
+                dav_delete_props(tofree);
+                std::cerr << "19" << std::endl;
+            }
+        }
+
+        std::cerr << "20" << std::endl;
+        
+        int f = open("/tmp/333", O_RDWR | O_CREAT | O_TRUNC);
+        
+        session_t::ContentHandler writer = [f] (const char* buf, size_t len) {return write(f, buf, len);};
+        
+        session.get("/testf/games/русские буквы.txt", writer);
+        
+        
+    }
+    catch (std::exception& e) {
+        std::cerr << "exception:" << e.what() << std::endl;
+    }
     
     
     return 0;
