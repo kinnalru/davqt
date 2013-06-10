@@ -27,6 +27,16 @@
 #include <QMap>
 #include <map>
 
+// class ne_exception_t : public std::runtime_error {
+//     int error;
+// public:
+//     explicit ne_exception_t(int error);
+//     ~ne_exception_t() throw() {};
+// 
+//     int error() const;
+// };
+
+
 enum state_e {
     exist,
     absent,

@@ -291,11 +291,15 @@ ls_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
     return;
 }
 
-void handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder) {
+QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder) {
     
+    std::cerr << "hd 1" << std::endl;
     const std::vector<resource_t> remote_entries = session.get_resources(remotefolder.toStdString());
+    std::cerr << "hd 2" << std::endl;
     const QFileInfoList local_entries = QDir(localfolder).entryInfoList();
 
+    QList<action_t> actions;
+    
     enum recursion {
         dirs, files,
     };
@@ -337,40 +341,41 @@ void handle_dir(db_t& localdb, session_t& session, const QString& localfolder, c
     const QSet<QString> remote_unhandled = remote_entries_set - local_added - local_deleted - local_exists;
     
     BOOST_FOREACH(const QString& file, local_added) {
-        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
-        
-        if (it == remote_entries.end()) {
+        if (!remote_entries_set.contains(file)) {
             std::cerr << "file " << file.toStdString() << " must be uploaded to server" << std::endl;
+            actions.push_back({action_t::upload, localfolder + "/" + file, remotefolder + "/" + file});
         }
         else {
             std::cerr << "file " << file.toStdString() << " already exists on server - must be compared" << std::endl;
+            actions.push_back({action_t::compare, localfolder + "/" + file, remotefolder + "/" + file});
         }
     }
     
     BOOST_FOREACH(const QString& file, local_deleted) {
-        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
-        
-        if (it == remote_entries.end()) {
+        if (!remote_entries_set.contains(file)) {
             std::cerr << "file " << file.toStdString() << " deleted on server too" << std::endl;
+            actions.push_back({action_t::both_deleted, localfolder + "/" + file, remotefolder + "/" + file});
         }
         else {
             std::cerr << "file " << file.toStdString() << " localy deleted must be compared with etag on server" << std::endl;
+            actions.push_back({action_t::local_deleted, localfolder + "/" + file, remotefolder + "/" + file});
         }
     }
     
     BOOST_FOREACH(const QString& file, local_exists) {
-        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
-        
-        if (it == remote_entries.end()) {
+        if (!remote_entries_set.contains(file)) {
             std::cerr << "file " << file.toStdString() << " deleted on server must be deleted localy" << std::endl;
+            actions.push_back({action_t::remote_deleted, localfolder + "/" + file, remotefolder + "/" + file});
         }
         else {
             std::cerr << "file " << file.toStdString() << " exists on server must be compared" << std::endl;
+            actions.push_back({action_t::compare, localfolder + "/" + file, remotefolder + "/" + file});
         }
     }
     
-    BOOST_FOREACH(const QString& remote, remote_unhandled) {
-        std::cerr << "unhandler remote file:" << remote.toStdString() << " must be downloaded" << std::endl;
+    BOOST_FOREACH(const QString& file, remote_unhandled) {
+        std::cerr << "unhandler remote file:" << file.toStdString() << " must be downloaded" << std::endl;
+        actions.push_back({action_t::download, localfolder + "/" + file, remotefolder + "/" + file});
     }
         
         
@@ -383,13 +388,15 @@ void handle_dir(db_t& localdb, session_t& session, const QString& localfolder, c
         
         if (it == remote_entries.end()) {
             std::cerr << "dir " << dir.toStdString() << " must be uploaded to server" << std::endl;
+            actions.push_back({action_t::upload_dir, localfolder + "/" + dir, remotefolder + "/" + dir});
         }
         else if (it->dir) {
             std::cerr << "dir " << dir.toStdString() << " already exists on server - recursion" << std::endl;
-            handle_dir(localdb, session, localfolder + "/" + dir, remotefolder + "/" + dir);
+            actions << handle_dir(localdb, session, localfolder + "/" + dir, remotefolder + "/" + dir);
         }
         else {
             std::cerr << "dir " << dir.toStdString() << " already exists on server - BUT NOT A DIR" << std::endl;
+            actions.push_back({action_t::error, localfolder + "/" + dir, remotefolder + "/" + dir});            
         }
         
         completed << dir;
@@ -402,14 +409,18 @@ void handle_dir(db_t& localdb, session_t& session, const QString& localfolder, c
         
         if (it == local_entries.end()) {
             std::cerr << "dir " << dir.toStdString() << " must be downloaded from server" << std::endl;
+            actions.push_back({action_t::download_dir, localfolder + "/" + dir, remotefolder + "/" + dir});
         }
         else if (!it->isDir()) {
             std::cerr << "dir " << dir.toStdString() << " already exists localy - BUT NOT A DIR" << std::endl;
+            actions.push_back({action_t::error, localfolder + "/" + dir, remotefolder + "/" + dir});                
         }
         else {
             assert(!"impossible");
         }
     }  
+    
+    return actions;
 }
 
 int main(int argc, char** argv)
@@ -523,8 +534,24 @@ int main(int argc, char** argv)
         db_t localdb;
         localdb.load(localfolder + "/.davqt/db");
         
-        handle_dir(localdb, session, localfolder, remotefolder);
+        auto act = handle_dir(localdb, session, localfolder, remotefolder);
+        std::cerr << std::endl << "actions:" << std::endl;
+        BOOST_FOREACH(action_t a, act) {
+            switch (a.type) {
+                case action_t::upload : std::cerr << "upload from " << a.localpath.toStdString() << " to " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::download : std::cerr << "download to " << a.localpath.toStdString() << " from " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::compare : std::cerr << "compare to " << a.localpath.toStdString() << " from " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::both_deleted : std::cerr << "both delete " << a.localpath.toStdString() << " and " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::local_deleted : std::cerr << "local delete " << a.localpath.toStdString() << " and " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::remote_deleted : std::cerr << "remote delete " << a.localpath.toStdString() << " and " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::upload_dir : std::cerr << "upload dir from " << a.localpath.toStdString() << " to " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::download_dir : std::cerr << "download dir to " << a.localpath.toStdString() << " from " << a.remotepath.toStdString() << std::endl; break;
+                case action_t::error : std::cerr << "error in " << a.localpath.toStdString() << " and " << a.remotepath.toStdString() << std::endl; break;
+            }
+        }
 
+        
+        
         
 //         QDir d("/tmp/111");
 //         

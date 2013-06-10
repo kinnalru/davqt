@@ -49,6 +49,24 @@ struct resource_t {
     exec_e exec;        
 };
 
+struct action_t {
+    enum type_e {
+        upload,
+        download,
+        compare,
+        both_deleted,
+        local_deleted,
+        remote_deleted,
+        upload_dir,
+        download_dir,
+        error
+    };
+    
+    type_e type;
+    QString localpath;
+    QString remotepath;
+};
+
 class session_t
 {
 public:
@@ -77,5 +95,16 @@ private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
 };
+
+
+class action_processor_t {
+    action_processor_t(session_t& session);
+    
+    void process(const action_t& action);
+
+private:
+    session_t& session_;
+};
+
 
 #endif // SESSION_H

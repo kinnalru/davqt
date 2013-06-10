@@ -202,7 +202,7 @@ std::vector<resource_t> session_t::get_resources(const std::string& path) {
     ctx.path = path;
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
-        std::cerr << "Error:" << err << std::endl;
+        std::cerr << "Err:" << err << " error:" << errno << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
     
@@ -292,6 +292,17 @@ void session_t::put(const std::string& path_raw, const std::vector<char>& buffer
     
 }
 
+
+action_processor_t::action_processor_t(session_t& session)
+    : session_(session)
+{
+
+}
+
+void action_processor_t::process(const action_t& action)
+{
+
+}
 
 
 
