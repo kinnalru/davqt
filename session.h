@@ -60,13 +60,18 @@ public:
    
     std::vector<std::string> ls(const std::string& path);
     
+    time_t mtime(const std::string& path);
+    
+    std::vector<resource_t> get_resources(const std::string& path);
+    
     void get(const std::string& path, ContentHandler& handler);
     
+    void put(const std::string& path, const std::vector<char>& buffer);
    
     ne_session* session() const;
     
 private:
-    std::vector<resource_t> get_resources(const std::string& path);
+    
     
 private:
     struct Pimpl;

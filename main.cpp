@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include <fcntl.h> 
 
+#include <QDir>
+#include <QDateTime>
+#include <QSet>
 
 #include <neon/ne_alloc.h>
 #include <neon/ne_auth.h>
@@ -31,7 +34,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/concept_check.hpp>
 
-#include <session.h>
+#include "session.h"
+#include "sync.h"
 
 static char *username = "";
 static char *password = "";
@@ -287,6 +291,127 @@ ls_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
     return;
 }
 
+void handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder) {
+    
+    const std::vector<resource_t> remote_entries = session.get_resources(remotefolder.toStdString());
+    const QFileInfoList local_entries = QDir(localfolder).entryInfoList();
+
+    enum recursion {
+        dirs, files,
+    };
+    
+    auto justNames = [] (const QFileInfoList& list, recursion r) {
+        QSet<QString> names;
+        BOOST_FOREACH(const auto& info, list) {
+            if (info.fileName() == "." || info.fileName() == "..") continue;
+            if (r == files && info.isDir() ) continue;
+            if (r == dirs && !info.isDir() ) continue;
+            
+            std::cerr << "local:" << info.fileName().toStdString() << std::endl;
+            names << info.fileName();
+        }
+        return names;
+    };
+    
+    auto remoteNames = [] (const std::vector<resource_t>& list, recursion r) {
+        QSet<QString> names;
+        BOOST_FOREACH(const auto& resource, list) {
+            if (resource.name == "." || resource.name == "..") continue;    
+            if (r == files && resource.dir) continue;
+            if (r == dirs && !resource.dir) continue;
+            
+            std::cerr << "remote:" << resource.name << std::endl;
+            names << resource.name.c_str();
+        }
+        return names;
+    };
+    
+    const QSet<QString> local_entries_set = justNames(local_entries, files);
+    const QSet<QString> local_db_set = QSet<QString>::fromList(localdb.entries());
+
+    const QSet<QString> local_added = local_entries_set - local_db_set;
+    const QSet<QString> local_deleted = local_db_set - local_entries_set;        
+    const QSet<QString> local_exists = local_db_set & local_entries_set;
+    
+    const QSet<QString> remote_entries_set = remoteNames(remote_entries, files);
+    const QSet<QString> remote_unhandled = remote_entries_set - local_added - local_deleted - local_exists;
+    
+    BOOST_FOREACH(const QString& file, local_added) {
+        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
+        
+        if (it == remote_entries.end()) {
+            std::cerr << "file " << file.toStdString() << " must be uploaded to server" << std::endl;
+        }
+        else {
+            std::cerr << "file " << file.toStdString() << " already exists on server - must be compared" << std::endl;
+        }
+    }
+    
+    BOOST_FOREACH(const QString& file, local_deleted) {
+        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
+        
+        if (it == remote_entries.end()) {
+            std::cerr << "file " << file.toStdString() << " deleted on server too" << std::endl;
+        }
+        else {
+            std::cerr << "file " << file.toStdString() << " localy deleted must be compared with etag on server" << std::endl;
+        }
+    }
+    
+    BOOST_FOREACH(const QString& file, local_exists) {
+        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == file.toStdString(); });
+        
+        if (it == remote_entries.end()) {
+            std::cerr << "file " << file.toStdString() << " deleted on server must be deleted localy" << std::endl;
+        }
+        else {
+            std::cerr << "file " << file.toStdString() << " exists on server must be compared" << std::endl;
+        }
+    }
+    
+    BOOST_FOREACH(const QString& remote, remote_unhandled) {
+        std::cerr << "unhandler remote file:" << remote.toStdString() << " must be downloaded" << std::endl;
+    }
+        
+        
+    //recursion
+    
+    QSet<QString> completed;
+    
+    BOOST_FOREACH(const QString& dir, justNames(local_entries, dirs)) {
+        auto it = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const resource_t& r) { return r.name == dir.toStdString(); });
+        
+        if (it == remote_entries.end()) {
+            std::cerr << "dir " << dir.toStdString() << " must be uploaded to server" << std::endl;
+        }
+        else if (it->dir) {
+            std::cerr << "dir " << dir.toStdString() << " already exists on server - recursion" << std::endl;
+            handle_dir(localdb, session, localfolder + "/" + dir, remotefolder + "/" + dir);
+        }
+        else {
+            std::cerr << "dir " << dir.toStdString() << " already exists on server - BUT NOT A DIR" << std::endl;
+        }
+        
+        completed << dir;
+    }  
+    
+    BOOST_FOREACH(const QString& dir, remoteNames(remote_entries, dirs)) {
+        if (completed.contains(dir)) continue;
+        
+        auto it = std::find_if(local_entries.begin(), local_entries.end(), [&] (const QFileInfo& r) { return r.fileName() == dir; });
+        
+        if (it == local_entries.end()) {
+            std::cerr << "dir " << dir.toStdString() << " must be downloaded from server" << std::endl;
+        }
+        else if (!it->isDir()) {
+            std::cerr << "dir " << dir.toStdString() << " already exists localy - BUT NOT A DIR" << std::endl;
+        }
+        else {
+            assert(!"impossible");
+        }
+    }  
+}
+
 int main(int argc, char** argv)
 {
     try {
@@ -347,7 +472,7 @@ int main(int argc, char** argv)
         
         std::cerr << "a1" << std::endl;
         BOOST_FOREACH(auto s, l) {
-            std::cerr << "file:" << s << std::endl;
+//             std::cerr << "file:" << s << std::endl;
         }
         
         std::cerr << "a2" << std::endl;
@@ -381,20 +506,6 @@ int main(int argc, char** argv)
 
         std::cerr << "14" << std::endl;
         
-        if (ret) {
-            std::cerr << "15" << std::endl;
-            while(ctx.results) {
-                std::cerr << "16" << std::endl;
-                dav_props *tofree = ctx.results;
-                std::cerr << "17" << std::endl;
-                ctx.results = ctx.results->next;
-                std::cerr << "18" << std::endl;
-                dav_delete_props(tofree);
-                std::cerr << "19" << std::endl;
-            }
-        }
-
-        std::cerr << "20" << std::endl;
         
         int f = open("/tmp/333", O_RDWR | O_CREAT | O_TRUNC);
         
@@ -402,6 +513,52 @@ int main(int argc, char** argv)
         
         session.get("/testf/games/русские буквы.txt", writer);
         
+        session.put("/testf/games/русские self.txt", {'a', 'b', 'c'});
+
+
+        const QString localfolder = "/tmp/111";
+        const QString remotefolder = "/1";
+
+        
+        db_t localdb;
+        localdb.load(localfolder + "/.davqt/db");
+        
+        handle_dir(localdb, session, localfolder, remotefolder);
+
+        
+//         QDir d("/tmp/111");
+//         
+//         auto files = session.ls("/1");
+//         
+//         BOOST_FOREACH(auto f, files) {
+//             std::cerr << "FILE:" << f <<std::endl;
+//         }
+//         
+//         BOOST_FOREACH(const QFileInfo& info, d.entryInfoList()) {
+//             if (!info.isFile()) continue;
+//             std::cerr << "to sync:" << info.absoluteFilePath().toStdString() << std::endl;
+//             
+//             auto it = std::find(files.begin(), files.end(), info.fileName().toStdString());     
+//             
+//             if (it == files.end()) {
+//                 std::cerr << "need to upload!" << std::endl;
+//                 
+//                 QFile f(info.absoluteFilePath());
+//                 f.open(QIODevice::ReadOnly);
+//                 const QByteArray data = f.readAll();
+//                 const std::vector<char> d(data.begin(), data.end());
+//                 session.put((QString("/1/") + info.fileName()).toStdString(), d);
+//                 
+//             } else {
+//                 std::cerr << "need to sync" << std::endl;
+//                 if (info.lastModified() == QDateTime::fromTime_t(session.mtime((QString("/1/") + info.fileName()).toStdString()))) {
+//                     std::cerr << "time differs" << std::endl;
+//                 }
+//                 else {
+//                     std::cerr << "time equal" << std::endl;
+//                 }
+//             }
+//         }
         
     }
     catch (std::exception& e) {

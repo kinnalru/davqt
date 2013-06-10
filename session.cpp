@@ -17,6 +17,8 @@
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <libgen.h>
+
 #include <stdexcept>
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
@@ -218,6 +220,15 @@ std::vector<std::string> session_t::ls(const std::string& path)
     return res;
 }
 
+time_t session_t::mtime(const std::string& path)
+{
+    BOOST_FOREACH(const auto& r, get_resources(path)) {
+        return r.mtime;
+    }
+    throw std::runtime_error("error in mtime");
+}
+
+
 void session_t::get(const std::string& path_raw, ContentHandler& handler)
 {
     std::shared_ptr<char> path(
@@ -252,6 +263,35 @@ void session_t::get(const std::string& path_raw, ContentHandler& handler)
         }
     }  
 }
+
+void session_t::put(const std::string& path_raw, const std::vector<char>& buffer)
+{
+    std::shared_ptr<char> path(
+        ne_path_escape(path_raw.c_str()),
+        free
+    );
+    
+   std::shared_ptr<ne_request> request(
+        ne_request_create(p_->session.get(), "PUT", path.get()),
+        ne_request_destroy
+    );
+   
+    ne_set_request_body_buffer(request.get(), buffer.data(), buffer.size());
+    
+    int  neon_stat = ne_request_dispatch(request.get());
+
+    if( neon_stat != NE_OK ) {
+        std::cerr << "Error PUT: Neon: %d, errno %d" <<  neon_stat <<  " no:" << errno;
+    } else {
+        const ne_status* status = ne_get_status(request.get());
+        std::cerr << "PUT http result %d (%s)" <<  status->code << " phrase:" << (status->reason_phrase ? status->reason_phrase : "<empty") << std::endl;
+        if( status->klass != 2 ) {
+            std::cerr << "sendfile request failed with http status %d!" <<  status->code;
+        }
+    }  
+    
+}
+
 
 
 
