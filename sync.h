@@ -45,9 +45,14 @@ enum state_e {
 };
 
 struct db_entry_t {
+    QString root;
     QString path;
     std::string etag;
-    time_t mtime;
+    
+    time_t local_mtime;
+    time_t remote_mtime;
+    
+    off_t size;
 };
 
 struct db_t {

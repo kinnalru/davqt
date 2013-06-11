@@ -21,12 +21,15 @@
 #ifndef SESSION_H
 #define SESSION_H
 
+#include <QString>
+#include <QFileInfo>
 #include <memory>
 #include <string>
 #include <functional>
 
-#include <bits/stl_vector.h>
 #include <boost/noncopyable.hpp>
+
+#include "sync.h"
 
 enum exec_e {
     none,
@@ -51,20 +54,34 @@ struct resource_t {
 
 struct action_t {
     enum type_e {
-        upload,
-        download,
-        compare,
-        both_deleted,
-        local_deleted,
-        remote_deleted,
-        upload_dir,
-        download_dir,
-        error
+        error         = 0,        
+        upload        = 1 << 0,
+        download      = 1 << 1,
+        local_changed = 1 << 2,
+        remote_changed= 1 << 3,
+        unchanged     = 1 << 4,
+        conflict      = 1 << 5,
+        both_deleted  = 1 << 6,
+        local_deleted = 1 << 7,
+        remote_deleted= 1 << 8,
+        upload_dir    = 1 << 9,
+        download_dir  = 1 << 10,
     };
+    
+    typedef int TypeMask;
     
     type_e type;
     QString localpath;
+    QFileInfo localinfo;
+    
     QString remotepath;
+};
+
+struct stat_t {
+    time_t local_mtime;
+    time_t remote_mtime;
+    off_t size;
+    std::string etag;
 };
 
 class session_t
@@ -83,9 +100,15 @@ public:
     std::vector<resource_t> get_resources(const std::string& path);
     
     void get(const std::string& path, ContentHandler& handler);
+    stat_t get(const std::string& path_raw, const QString& localpath);
     
     void put(const std::string& path, const std::vector<char>& buffer);
+    stat_t put(const std::string& path_raw, const QString& localpath);
+//     void put(const std::string& path_raw, const QString& path);
    
+    void head(const std::string& raw_path, std::string& etag, time_t& mtime, off_t& length);
+    
+    
     ne_session* session() const;
     
 private:
@@ -98,6 +121,7 @@ private:
 
 
 class action_processor_t {
+public:
     action_processor_t(session_t& session);
     
     void process(const action_t& action);
