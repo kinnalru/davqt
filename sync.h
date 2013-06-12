@@ -76,11 +76,26 @@ struct db_t {
     
     void load(const QString& path) {
         db_.clear();
+        path_ = path;
+        QSettings s(path_, QSettings::IniFormat);
         
-        QSettings s(path, QSettings::IniFormat);
         Q_FOREACH(QString key, s.allKeys()) {
             db_[key].path = key;
+            db_[key].etag = s.value(key + "/etag").toString().toStdString();
+            db_[key].local_mtime = s.value(key + "/local_mtime").toLongLong();
+            db_[key].remote_mtime = s.value(key + "/remote_mtime").toLongLong();
+            db_[key].size = s.value(key + "/size").toULongLong();
         }
+    }
+    
+    void save(const QString& key, const db_entry_t& e) {
+        QSettings s(path_, QSettings::IniFormat);
+        
+        s.setValue(key + "/etag", e.etag.c_str());
+        s.setValue(key + "/local_mtime", qlonglong(e.local_mtime));
+        s.setValue(key + "/remote_mtime", qlonglong(e.remote_mtime));
+        s.setValue(key + "/size", qulonglong(e.size));
+
     }
     
     db_entry_t& entry(const QString& path) {
@@ -91,6 +106,7 @@ struct db_t {
         return QMap<QString, db_entry_t>(db_).keys();
     }
     
+    QString path_;
     std::map<QString, db_entry_t> db_;
 };
 

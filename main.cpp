@@ -497,6 +497,7 @@ int main(int argc, char** argv)
         
         
         session_t session("https", "webdav.yandex.ru");
+//         session_t session("https", "localhost", 443);
         
         std::cerr << "2" << std::endl;
         
@@ -616,7 +617,7 @@ int main(int argc, char** argv)
             }
         }
 
-        action_processor_t processor(session);
+        action_processor_t processor(session, localdb);
         
         
         std::cerr << std::endl << "process:" << std::endl;

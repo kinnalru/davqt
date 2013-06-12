@@ -103,7 +103,7 @@ public:
     stat_t get(const std::string& path_raw, const QString& localpath);
     
     void put(const std::string& path, const std::vector<char>& buffer);
-    stat_t put(const std::string& path_raw, const QString& localpath);
+    stat_t put(const std::string& path_raw, int fd);
 //     void put(const std::string& path_raw, const QString& path);
    
     void head(const std::string& raw_path, std::string& etag, time_t& mtime, off_t& length);
@@ -122,12 +122,13 @@ private:
 
 class action_processor_t {
 public:
-    action_processor_t(session_t& session);
+    action_processor_t(session_t& session, db_t& db);
     
     void process(const action_t& action);
 
 private:
     session_t& session_;
+    db_t& db_;
 };
 
 

@@ -258,7 +258,24 @@ int post_send_handler(ne_request *req, void *userdata, const ne_status *status) 
         data->remote_mtime = 0;
     }
     
+    std::cerr << "status:" << status->code << std::endl;
+    std::cerr << "status2:" << status->reason_phrase << std::endl;
+    
     return NE_OK;
+}
+
+void pre_send_handler(ne_request *req, void *userdata, ne_buffer *header) {
+// void pre_send_handler(ne_request *req, void *userdata, const char *method, const char *requri) {
+//     ne_add_request_header(req, "If-None-Match", "*");
+//     ne_add_request_header(req, "If-None-Match", "*");
+    ne_add_request_header(req, "If-None-Match", "*");
+    ne_add_request_header(req, "X-Len-Test", "123");
+//     ne_buffer_zappend(header, "If-None-Match: *");
+//     ne_buffer_zappend(header, "If-None-Match: *");
+    ne_buffer_zappend(header, "If-Match: 123321\r\n");
+    ne_buffer_zappend(header, "If-Match: 123321\n");
+    
+    std::cerr << "here:" << header->data << std::endl;
 }
 
 void session_t::head(const std::string& raw_path, std::string& etag, time_t& mtime, off_t& length)
@@ -440,59 +457,29 @@ void session_t::put(const std::string& path_raw, const std::vector<char>& buffer
     }  
 }
 
-stat_t session_t::put(const std::string& path_raw, const QString& fpath)
+stat_t session_t::put(const std::string& path_raw, int fd)
 {
     std::shared_ptr<char> path(
         ne_path_escape(path_raw.c_str()),
         free
     );
 
-    int fd = open(fpath.toStdString().c_str(), O_RDWR);
-    struct stat st;
-    fstat(fd, &st);
-    
     stat_t data;
-    data.size = st.st_size;
-    data.local_mtime = st.st_mtime;
+
     
-//         if (!*exists) {
-//             ne_add_request_header(req, "If-None-Match", "*");
-//         } else {
-//             if (etag && *etag)
-//                 ne_add_request_header(req, "If-Match", *etag);
-//         }
-    
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
     ne_hook_post_send(p_->session.get(), post_send_handler, &data);
+    
     int neon_stat = ne_put(p_->session.get(), path.get(), fd);
+    
     ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
-    close(fd);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    
+    std::cerr << "stat:" << neon_stat << std::endl;
     
     if (neon_stat != NE_OK) {
         std::cerr << "error when put:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
-    }
-    
-    if (data.etag.empty() || data.remote_mtime == 0) {
-        std::string etag;
-        time_t mtime;
-        off_t size = 0;
-        head(path_raw, etag, mtime, size);
-    
-        if (data.etag.empty()) {
-            data.etag = etag;
-        }
-        else if (etag != data.etag) {
-            std::cerr << "etag differs " << data.etag << " remote:" << etag << std::endl;
-        }    
-        
-        if (data.remote_mtime && data.remote_mtime != mtime) {
-            std::cerr << "remote mtime differs " << data.remote_mtime << " remote:" << mtime << std::endl;
-            data.remote_mtime = 0;
-        }
-        
-        if (data.size != size) {
-            std::cerr << "remote size differs " << data.size << " remote:" << size << std::endl;
-        }
     }
     
     return data;
@@ -500,8 +487,9 @@ stat_t session_t::put(const std::string& path_raw, const QString& fpath)
 
 
 
-action_processor_t::action_processor_t(session_t& session)
+action_processor_t::action_processor_t(session_t& session, db_t& db)
     : session_(session)
+    , db_(db)
 {
 
 }
@@ -526,7 +514,59 @@ void action_processor_t::process(const action_t& action)
             
     switch (action.type) {
         case action_t::upload: {
-            stat_t st = session_.put(action.remotepath.toStdString(), action.localpath);
+
+            int fd = open(action.localpath.toStdString().c_str(), O_RDWR);
+
+            struct stat st;
+            fstat(fd, &st);
+            stat_t status = session_.put(action.remotepath.toStdString(), fd);
+            close(fd);
+            
+            {
+                int fd = open(action.localpath.toStdString().c_str(), O_RDWR);
+
+                struct stat st;
+                fstat(fd, &st);
+                stat_t status = session_.put(action.remotepath.toStdString(), fd);
+                close(fd);
+            }
+            
+            status.size = st.st_size;
+            status.local_mtime = st.st_mtime;
+            
+            if (status.etag.empty() || status.remote_mtime == 0) {
+                std::string etag;
+                time_t mtime;
+                off_t size = 0;
+                session_.head(action.remotepath.toStdString(), etag, mtime, size);
+
+                if (status.etag.empty()) {
+                    status.etag = etag;
+                }
+                else if (etag != status.etag) {
+                    std::cerr << "etag differs " << status.etag << " remote:" << etag << std::endl;
+                }    
+                
+                if (status.remote_mtime && status.remote_mtime != mtime) {
+                    std::cerr << "remote mtime differs " << status.remote_mtime << " remote:" << mtime << std::endl;
+                    status.remote_mtime = 0;
+                }
+                
+                if (status.size != size) {
+                    std::cerr << "remote size differs " << status.size << " remote:" << size << std::endl;
+                }
+            }
+            
+            db_entry_t& e = db_.entry(action.localpath);
+            
+            e.etag = status.etag;
+            e.local_mtime = status.local_mtime;
+            e.remote_mtime = status.remote_mtime;
+            e.size = status.size;
+            e.path = action.localpath;
+            
+            db_.save(action.localpath, e);
+            
             break;
         }
         case action_t::download: {
