@@ -43,13 +43,9 @@ static char *password = "";
 
 static int auth(void *userdata, const char *realm, int attempt, char *user, char *pwd)
 {
-    std::cerr << "4" << std::endl;
-    
     if (attempt) {
         return attempt;
     }
-
-    std::cerr << "5" << std::endl;
 
     strncpy(user, username, NE_ABUFSIZ - 1);
     strncpy(pwd, password, NE_ABUFSIZ - 1);

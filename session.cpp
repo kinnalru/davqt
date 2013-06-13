@@ -264,15 +264,11 @@ int post_send_handler(ne_request *req, void *userdata, const ne_status *status) 
 }
 
 void pre_send_handler(ne_request *req, void *userdata, ne_buffer *header) {
-// void pre_send_handler(ne_request *req, void *userdata, const char *method, const char *requri) {
-//     ne_add_request_header(req, "If-None-Match", "*");
-//     ne_add_request_header(req, "If-None-Match", "*");
     ne_add_request_header(req, "If-None-Match", "*");
-    ne_add_request_header(req, "X-Len-Test", "123");
-//     ne_buffer_zappend(header, "If-None-Match: *");
-//     ne_buffer_zappend(header, "If-None-Match: *");
-    ne_buffer_zappend(header, "If-Match: 123321\r\n");
-    ne_buffer_zappend(header, "If-Match: 123321\n");
+//     ne_add_request_header(req, "X-Len-Test", "123");
+// 
+//     ne_buffer_zappend(header, "If-Match: 123321\r\n");
+//     ne_buffer_zappend(header, "If-Match: 123321\n");
     
     std::cerr << "here:" << header->data << std::endl;
 }
@@ -468,8 +464,10 @@ stat_t session_t::put(const std::string& path_raw, int fd)
     
     ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
     ne_hook_post_send(p_->session.get(), post_send_handler, &data);
-    
+
+    std::cerr << "p1" << std::endl;    
     int neon_stat = ne_put(p_->session.get(), path.get(), fd);
+    std::cerr << "p2" << std::endl;    
     
     ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
     ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
@@ -506,12 +504,12 @@ struct upload_h : base_handler {
         close(fd);
         
         {
-            int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
-
-            struct stat st;
-            fstat(fd, &st);
-            stat_t status = session.put(action.remote_file.toStdString(), fd);
-            close(fd);
+//             int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
+// 
+//             struct stat st;
+//             fstat(fd, &st);
+//             stat_t status = session.put(action.remote_file.toStdString(), fd);
+//             close(fd);
         }
         
         status.size = st.st_size;
@@ -580,6 +578,7 @@ void action_processor_t::process(const action_t& action)
     if (h != handlers_.end()) {
         std::cerr << "processing action: " << action.type << " " << action.local_file.toStdString() << " --> " << action.remote_file.toStdString() << std::endl;
         h->second(action);
+        std::cerr << "completed" << std::endl;
     }
     else {
          std::cerr << " == SKIP ==" << std::endl;
