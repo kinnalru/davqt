@@ -17,6 +17,116 @@
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <QDateTime>
+#include <QDebug>
 
 #include "sync.h"
+
+const QString etag_c = "etag";
+const QString local_mtime_c = "local_mtime";
+const QString remote_mtime_c = "remote_mtime";
+const QString size_c = "size";
+
+
+db_t::db_t(const QString& dbpath, const QString& localroot)
+    : dbpath_(dbpath)
+    , localroot_(localroot)
+{
+    auto s = settings();
+    
+    qDebug() << "DB: loading files:" << s->childGroups();
+    
+    
+    Q_FOREACH(const QString& escaped_folder, s->childGroups()) {
+        const QString folder = QString(escaped_folder).replace("===", "/"); 
+        auto& dbfolder = db_[folder];
+        
+        s->beginGroup(escaped_folder);
+        Q_FOREACH(const QString& file, s->childGroups()) {
+            s->beginGroup(file);
+            dbfolder[file] = db_entry_t(
+                localroot_.absolutePath(),
+                folder,
+                file,
+                s->value(etag_c).toString().toStdString(),
+                s->value(local_mtime_c).toLongLong(),
+                s->value(remote_mtime_c).toLongLong(),
+                s->value(size_c).toULongLong()
+            );
+            s->endGroup();
+        }
+        s->endGroup();        
+    }
+}
+
+void db_t::save(const QString& key, const db_entry_t& e)
+{
+    auto s = settings();
+    
+    const QFileInfo relative = QFileInfo(localroot_.relativeFilePath(key));
+    const QString folder = relative.path();
+    const QString escaped_folder = relative.path().replace("/", "===");
+
+    auto& dbfolder = db_[folder];
+    db_entry_t& sv = dbfolder[relative.fileName()];
+    
+    if (!e.empty()) {
+        Q_ASSERT(e.folder == relative.path());
+        Q_ASSERT(e.name == relative.fileName());
+        sv = e;
+    }
+    
+    qDebug() << "DB: save file:" << folder << " name:" << relative.fileName()  << " raw:" << key;
+     
+    s->beginGroup(escaped_folder);
+        s->beginGroup(sv.name);
+        s->setValue(etag_c, sv.etag.c_str());
+        s->setValue(local_mtime_c, qlonglong(sv.local_mtime));
+        s->setValue(remote_mtime_c, qlonglong(sv.remote_mtime));
+        s->setValue(size_c, qulonglong(sv.size));
+        s->endGroup();
+    s->endGroup();
+}
+
+action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
+{
+    qDebug() << "comparing :" << local.absoluteFilePath() << " <-> " << remote.path.c_str();
+    action_t::TypeMask mask = 0;
+    
+    if (QDateTime::fromTime_t(dbentry.local_mtime) != local.lastModified()) {
+        mask |= action_t::local_changed;
+        qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dbentry.local_mtime) << " -> " << local.lastModified();
+    }
+    
+    if (dbentry.size != local.size()) {
+        mask |= action_t::local_changed;
+        qDebug() << " -> local size changed:" << dbentry.size << " -> " << local.size();
+    }
+    
+    if (QDateTime::fromTime_t(dbentry.remote_mtime) != QDateTime::fromTime_t(remote.mtime)) {
+        mask |= action_t::remote_changed;
+        qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.remote_mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
+    }
+    
+    if (dbentry.size != remote.size) {
+        mask |= action_t::remote_changed;
+        qDebug() << " -> remote size changed:" << dbentry.size << " -> " << remote.size;
+    }
+    
+    if (dbentry.etag != remote.etag) {
+        mask |= action_t::remote_changed;
+        qDebug() << " -> etag changed:" << dbentry.etag.c_str() << " -> " << remote.etag.c_str();
+    }
+    
+    if (mask == action_t::local_changed) return action_t::local_changed;
+    if (mask == action_t::remote_changed) return action_t::remote_changed;
+    
+    if (mask & action_t::local_changed && mask & action_t::remote_changed) {
+        qDebug() << " -> CONFLICT";
+        return action_t::conflict;
+    }
+    
+    qDebug() << " -> UNCHANGED";
+    action_t::unchanged;
+}
 

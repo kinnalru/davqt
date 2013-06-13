@@ -73,7 +73,7 @@ static const std::vector<ne_propname> anonymous_prop_names = [] {
 
 struct request_ctx_t {
     std::string path;
-    std::vector<resource_t> resources;
+    std::vector<remote_res_t> resources;
 };
 
 void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *set)
@@ -89,7 +89,7 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     //FIXME check
     //if (!res || !uri || !uri->path || !set) return;
 
-    resource_t resource;
+    remote_res_t resource;
     
     resource.path = ne_path_unescape(uri->path);
     
@@ -131,11 +131,11 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     
     data = ne_propset_value(set, &prop_names[EXECUTE]);
     if (!data) data = ne_propset_value(set, &anonymous_prop_names[EXECUTE]);
-    resource.exec = none;
+    resource.exec = remote_res_t::none;
     if (!data) {
-        resource.exec = (resource.dir) ? none : no_exec;
+        resource.exec = (resource.dir) ? remote_res_t::none : remote_res_t::not_executable;
     } else if (*data == 'T') {
-        resource.exec = exec;
+        resource.exec = remote_res_t::executable;
     }
     
     std::shared_ptr<char> path(strdup(resource.path.c_str()), free);
@@ -147,7 +147,6 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
         resource.name = ".";
     
     ctx->resources.push_back(resource);
-    return;
 }
 
 static int content_reader(void *userdata, const char *buf, size_t len)
@@ -195,7 +194,7 @@ ne_session* session_t::session() const
     return p_->session.get();
 }
 
-std::vector<resource_t> session_t::get_resources(const std::string& path) {
+std::vector<remote_res_t> session_t::get_resources(const std::string& path) {
     
     std::shared_ptr<ne_propfind_handler> ph(
         ne_propfind_create(p_->session.get(), path.c_str(), NE_DEPTH_ONE),
@@ -486,12 +485,78 @@ stat_t session_t::put(const std::string& path_raw, int fd)
 }
 
 
+struct base_handler {
+    
+    base_handler(session_t& s, db_t& d) : session(s), db(d) {}
+    
+protected:
+    session_t& session;
+    db_t& db;
+};
+
+struct upload_h : base_handler {
+    upload_h(session_t& s, db_t& d) : base_handler(s, d) {}
+    
+    void operator() (const action_t& action) const {
+        int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
+
+        struct stat st;
+        fstat(fd, &st);
+        stat_t status = session.put(action.remote_file.toStdString(), fd);
+        close(fd);
+        
+        {
+            int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
+
+            struct stat st;
+            fstat(fd, &st);
+            stat_t status = session.put(action.remote_file.toStdString(), fd);
+            close(fd);
+        }
+        
+        status.size = st.st_size;
+        status.local_mtime = st.st_mtime;
+        
+        if (status.etag.empty() || status.remote_mtime == 0) {
+            std::string etag;
+            time_t mtime;
+            off_t size = 0;
+            session.head(action.remote_file.toStdString(), etag, mtime, size);
+
+            if (status.etag.empty()) {
+                status.etag = etag;
+            }
+            else if (etag != status.etag) {
+                std::cerr << "etag differs " << status.etag << " remote:" << etag << std::endl;
+            }    
+            
+            if (status.remote_mtime && status.remote_mtime != mtime) {
+                std::cerr << "remote mtime differs " << status.remote_mtime << " remote:" << mtime << std::endl;
+                status.remote_mtime = 0;
+            }
+            
+            if (status.size != size) {
+                std::cerr << "remote size differs " << status.size << " remote:" << size << std::endl;
+            }
+        }
+        
+        db_entry_t e = action.dbentry;
+        
+        e.etag = status.etag;
+        e.local_mtime = status.local_mtime;
+        e.remote_mtime = status.remote_mtime;
+        e.size = status.size;
+        
+        db.save(e.folder + "/" + e.name, e);
+    }
+};
+
 
 action_processor_t::action_processor_t(session_t& session, db_t& db)
     : session_(session)
     , db_(db)
 {
-
+    handlers_[action_t::upload] = upload_h(session_, db_);
 }
 
 void action_processor_t::process(const action_t& action)
@@ -510,73 +575,81 @@ void action_processor_t::process(const action_t& action)
 //         upload_dir    = 1 << 9,
 //         download_dir  = 1 << 10,
 
-            std::cerr << "processing action: " << action.type << " " << action.localpath.toStdString() << " --> " << action.remotepath.toStdString() << std::endl;
             
-    switch (action.type) {
-        case action_t::upload: {
-
-            int fd = open(action.localpath.toStdString().c_str(), O_RDWR);
-
-            struct stat st;
-            fstat(fd, &st);
-            stat_t status = session_.put(action.remotepath.toStdString(), fd);
-            close(fd);
+    auto h = handlers_.find(action.type);
+    if (h != handlers_.end()) {
+        std::cerr << "processing action: " << action.type << " " << action.local_file.toStdString() << " --> " << action.remote_file.toStdString() << std::endl;
+        h->second(action);
+    }
+    else {
+         std::cerr << " == SKIP ==" << std::endl;
+    }
             
-            {
-                int fd = open(action.localpath.toStdString().c_str(), O_RDWR);
-
-                struct stat st;
-                fstat(fd, &st);
-                stat_t status = session_.put(action.remotepath.toStdString(), fd);
-                close(fd);
-            }
-            
-            status.size = st.st_size;
-            status.local_mtime = st.st_mtime;
-            
-            if (status.etag.empty() || status.remote_mtime == 0) {
-                std::string etag;
-                time_t mtime;
-                off_t size = 0;
-                session_.head(action.remotepath.toStdString(), etag, mtime, size);
-
-                if (status.etag.empty()) {
-                    status.etag = etag;
-                }
-                else if (etag != status.etag) {
-                    std::cerr << "etag differs " << status.etag << " remote:" << etag << std::endl;
-                }    
-                
-                if (status.remote_mtime && status.remote_mtime != mtime) {
-                    std::cerr << "remote mtime differs " << status.remote_mtime << " remote:" << mtime << std::endl;
-                    status.remote_mtime = 0;
-                }
-                
-                if (status.size != size) {
-                    std::cerr << "remote size differs " << status.size << " remote:" << size << std::endl;
-                }
-            }
-            
-            db_entry_t& e = db_.entry(action.localpath);
-            
-            e.etag = status.etag;
-            e.local_mtime = status.local_mtime;
-            e.remote_mtime = status.remote_mtime;
-            e.size = status.size;
-            e.path = action.localpath;
-            
-            db_.save(action.localpath, e);
-            
-            break;
-        }
-        case action_t::download: {
-            std::cerr << "d1" << std::endl;
-            stat_t st =  session_.get(action.remotepath.toStdString(), action.localpath);
-            std::cerr << "d2" << std::endl;
-            break;
-        }
-        default: std::cerr << " == SKIP ==" << std::endl;
-    };
+//     switch (action.type) {
+//         case action_t::upload: {
+// 
+//             int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
+// 
+//             struct stat st;
+//             fstat(fd, &st);
+//             stat_t status = session_.put(action.remote.path, fd);
+//             close(fd);
+//             
+//             {
+//                 int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
+// 
+//                 struct stat st;
+//                 fstat(fd, &st);
+//                 stat_t status = session_.put(action.remote.path, fd);
+//                 close(fd);
+//             }
+//             
+//             status.size = st.st_size;
+//             status.local_mtime = st.st_mtime;
+//             
+//             if (status.etag.empty() || status.remote_mtime == 0) {
+//                 std::string etag;
+//                 time_t mtime;
+//                 off_t size = 0;
+//                 session_.head(action.remote.path.c_str(), etag, mtime, size);
+// 
+//                 if (status.etag.empty()) {
+//                     status.etag = etag;
+//                 }
+//                 else if (etag != status.etag) {
+//                     std::cerr << "etag differs " << status.etag << " remote:" << etag << std::endl;
+//                 }    
+//                 
+//                 if (status.remote_mtime && status.remote_mtime != mtime) {
+//                     std::cerr << "remote mtime differs " << status.remote_mtime << " remote:" << mtime << std::endl;
+//                     status.remote_mtime = 0;
+//                 }
+//                 
+//                 if (status.size != size) {
+//                     std::cerr << "remote size differs " << status.size << " remote:" << size << std::endl;
+//                 }
+//             }
+//             
+//             db_entry_t e = action.dbentry;
+//             
+//             e.etag = status.etag;
+//             e.local_mtime = status.local_mtime;
+//             e.remote_mtime = status.remote_mtime;
+//             e.size = status.size;
+// //             e.path = action.local.path();
+//             
+//             db_.save(e.path, e);
+//             
+//             break;
+//         }
+//         case action_t::download: {
+//             std::cerr << "d1" << std::endl;
+//             stat_t st =  session_.get(action.remote.path.c_str(), action.local.absoluteFilePath());
+//             std::cerr << "d2" << std::endl;
+//             break;
+//         }
+//         default: std::cerr << " == SKIP ==" << std::endl;
+//     };
 }
 
 

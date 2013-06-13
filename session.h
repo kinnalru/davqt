@@ -31,51 +31,7 @@
 
 #include "sync.h"
 
-enum exec_e {
-    none,
-    exec,
-    no_exec,
-};
 
-struct resource_t {
-    std::string path;   /* The unescaped path of the resource. */
-    std::string name;   /* The name of the file or directory. Only the last
-                           component (no path), no slashes. */
-    std::string etag;   /* The etag string, including quotation characters,
-                           but without the mark for weak etags. */
-    bool dir;
-                           
-    off_t size;         /* File size in bytes (regular files only). */
-    time_t ctime;       /* Creation date. */
-    time_t mtime;       /* Date of last modification. */
-
-    exec_e exec;        
-};
-
-struct action_t {
-    enum type_e {
-        error         = 0,        
-        upload        = 1 << 0,
-        download      = 1 << 1,
-        local_changed = 1 << 2,
-        remote_changed= 1 << 3,
-        unchanged     = 1 << 4,
-        conflict      = 1 << 5,
-        both_deleted  = 1 << 6,
-        local_deleted = 1 << 7,
-        remote_deleted= 1 << 8,
-        upload_dir    = 1 << 9,
-        download_dir  = 1 << 10,
-    };
-    
-    typedef int TypeMask;
-    
-    type_e type;
-    QString localpath;
-    QFileInfo localinfo;
-    
-    QString remotepath;
-};
 
 struct stat_t {
     time_t local_mtime;
@@ -97,7 +53,7 @@ public:
     
     time_t mtime(const std::string& path);
     
-    std::vector<resource_t> get_resources(const std::string& path);
+    std::vector<remote_res_t> get_resources(const std::string& path);
     
     void get(const std::string& path, ContentHandler& handler);
     stat_t get(const std::string& path_raw, const QString& localpath);
@@ -129,6 +85,7 @@ public:
 private:
     session_t& session_;
     db_t& db_;
+    std::map<action_t::type_e, std::function<void (const action_t&)>> handlers_;
 };
 
 

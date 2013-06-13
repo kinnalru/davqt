@@ -21,102 +21,58 @@
 #ifndef SYNC_H
 #define SYNC_H
 
-#include <QString>
-#include <QStringList>
-#include <QSettings>
-#include <QMap>
 #include <map>
+#include <memory>
 
-// class ne_exception_t : public std::runtime_error {
-//     int error;
-// public:
-//     explicit ne_exception_t(int error);
-//     ~ne_exception_t() throw() {};
-// 
-//     int error() const;
-// };
+#include <QDir>
+#include <QMap>
+#include <QSettings>
+#include <QStringList>
+#include <QDebug>
 
+#include "types.h"
 
-enum state_e {
-    exist,
-    absent,
-    added,
-    deleted,
-};
-
-struct db_entry_t {
-    QString root;
-    QString path;
-    std::string etag;
-    
-    time_t local_mtime;
-    time_t remote_mtime;
-    
-    off_t size;
-};
 
 struct db_t {
 
-    state_e state(const QString& path, bool currently_exist) {
-        auto it = db_.find(path);
-        
-        if (it != db_.end()) {
-            if (currently_exist)
-                return exist;
-            else 
-                return deleted;
-        }
-        else {
-            if (currently_exist)
-                return added;
-            else 
-                return absent;
-        }
-    }
+    db_t(const QString& dbpath, const QString& localroot);
+   
+    void save(const QString& key, const db_entry_t& e = db_entry_t());
     
-    void load(const QString& path) {
-        db_.clear();
-        path_ = path;
-        QSettings s(path_, QSettings::IniFormat);
-        
-        Q_FOREACH(QString key, s.allKeys()) {
-            db_[key].path = key;
-            db_[key].etag = s.value(key + "/etag").toString().toStdString();
-            db_[key].local_mtime = s.value(key + "/local_mtime").toLongLong();
-            db_[key].remote_mtime = s.value(key + "/remote_mtime").toLongLong();
-            db_[key].size = s.value(key + "/size").toULongLong();
-        }
-    }
-    
-    void save(const QString& key, const db_entry_t& e) {
-        QSettings s(path_, QSettings::IniFormat);
-        
-        s.setValue(key + "/etag", e.etag.c_str());
-        s.setValue(key + "/local_mtime", qlonglong(e.local_mtime));
-        s.setValue(key + "/remote_mtime", qlonglong(e.remote_mtime));
-        s.setValue(key + "/size", qulonglong(e.size));
+    inline db_entry_t& entry(const QString& absolutepath) {
+        const QFileInfo relative = QFileInfo(localroot_.relativeFilePath(absolutepath));
 
+        db_entry_t& e = db_[relative.path()][relative.fileName()];
+        e.folder = relative.path();
+        e.name = relative.fileName();
+        qDebug() << "get entry:" << e.folder << " name:" << e.name;
+        return e;
     }
     
-    db_entry_t& entry(const QString& path) {
-        return db_[path];
+    inline QStringList entries(const QString& folder) const {
+        auto it = db_.find(folder);
+        return (it == db_.end())
+            ? QStringList()
+            : QMap<QString, db_entry_t>(it->second).keys();
     }
     
-    QStringList entries() const {
-        return QMap<QString, db_entry_t>(db_).keys();
+private:
+    inline std::unique_ptr<QSettings> settings() {
+        return std::unique_ptr<QSettings>(new QSettings(dbpath_, QSettings::IniFormat));
     }
     
-    QString path_;
-    std::map<QString, db_entry_t> db_;
+    QString dbpath_;
+    QDir localroot_;
+    
+    typedef std::map<QString, db_entry_t> FolderDb;
+    std::map<QString, FolderDb> db_;
 };
 
-class sync_t
-{
-    sync_t( const QString& path1, const QString& path2) {
-        db_t db;
-        db.load(path1 + "/.davqt/db");
-    }
-    
-};
+
+action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote);
+
+
+
+
 
 #endif // SYNC_H
