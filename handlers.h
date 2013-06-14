@@ -4,6 +4,7 @@
 
 #include "session.h"
 #include "sync.h"
+#include "database.h"
 
 class action_processor_t {
 public:

@@ -15,17 +15,21 @@ find_package(Qt4 REQUIRED QtCore QtNetwork QtGui)
 include(${QT_USE_FILE})
 
 set(HEADERS
+    database.h
     handlers.h
+    session.h
+    sync.h
 )
 
 set(MOC
 )
 
 set(SOURCES
+    database.cpp
+    handlers.cpp
     main.cpp
     session.cpp
     sync.cpp
-    handlers.cpp
 )
 
 set(IFACES
