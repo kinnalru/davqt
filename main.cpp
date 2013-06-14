@@ -294,8 +294,15 @@ QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& loc
     std::cerr << "hd 1" << std::endl;
     const std::vector<remote_res_t> remote_entries = session.get_resources(remotefolder.toStdString());
     std::cerr << "hd 2" << std::endl;
-    const QFileInfoList local_entries = QDir(localfolder).entryInfoList();
-
+    QFileInfoList local_entries;
+    
+    Q_FOREACH(const QFileInfo& info, QDir(localfolder).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
+        if (info.fileName() == "." || info.fileName() == "..") continue;
+        if (info.fileName() == db_t::prefix || info.suffix() == db_t::tmpprefix) continue;
+            
+        local_entries << info;
+    };
+    
     QList<action_t> actions;
     
     enum recursion {
@@ -389,7 +396,7 @@ QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& loc
                 localfile,
                 remotefile,
                 QFileInfo(),
-                *find_resource(file)));
+                remote_res_t()));
         }
         else {
             std::cerr << "file " << file.toStdString() << " localy deleted must be compared with etag on server" << std::endl;
@@ -622,7 +629,7 @@ int main(int argc, char** argv)
 
 
         qDebug() << "====== LOAD ======";        
-        db_t localdb(localfolder + "/.davqt/db", localfolder);
+        db_t localdb(localfolder + "/" + db_t::prefix + "/db", localfolder);
 //         localdb.load(localfolder + "/.davqt/db", localfolder);
         
         auto act = handle_dir(localdb, session, localfolder, remotefolder);
@@ -635,7 +642,7 @@ int main(int argc, char** argv)
                 case action_t::remote_changed : std::cerr << "remote_changed file " << a.local.absoluteFilePath().toStdString() << " from " << a.remote.path << std::endl; break;
                 case action_t::unchanged : std::cerr << "unchanged file " << a.local.absoluteFilePath().toStdString() << " from " << a.remote.path << std::endl; break;
                 case action_t::conflict : std::cerr << "CONFLICT file " << a.local.absoluteFilePath().toStdString() << " from " << a.remote.path << std::endl; break;
-                case action_t::both_deleted : std::cerr << "both delete " << a.local.absoluteFilePath().toStdString() << " and " << a.remote.path << std::endl; break;
+                case action_t::both_deleted : std::cerr << "both delete " << a.local_file.toStdString() << " and " << a.remote_file.toStdString() << std::endl; break;
                 case action_t::local_deleted : std::cerr << "local delete " << a.local.absoluteFilePath().toStdString() << " and " << a.remote.path << std::endl; break;
                 case action_t::remote_deleted : std::cerr << "remote delete " << a.local.absoluteFilePath().toStdString() << " and " << a.remote.path << std::endl; break;
                 case action_t::upload_dir : std::cerr << "upload dir from " << a.local.absoluteFilePath().toStdString() << " to " << a.remote.path << std::endl; break;

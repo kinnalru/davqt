@@ -32,14 +32,6 @@
 #include "sync.h"
 
 
-
-struct stat_t {
-    time_t local_mtime;
-    time_t remote_mtime;
-    off_t size;
-    std::string etag;
-};
-
 class session_t
 {
 public:
@@ -55,15 +47,15 @@ public:
     
     std::vector<remote_res_t> get_resources(const std::string& path);
     
-    void get(const std::string& path, ContentHandler& handler);
-    stat_t get(const std::string& path_raw, const QString& localpath);
+    void get(const std::string& path_raw, ContentHandler& handler);
+    stat_t get(const std::string& path_raw, int fd);
     
-    void put(const std::string& path, const std::vector<char>& buffer);
+    void put(const std::string& path_raw, const std::vector<char>& buffer);
     stat_t put(const std::string& path_raw, int fd);
-//     void put(const std::string& path_raw, const QString& path);
-   
-    void head(const std::string& raw_path, std::string& etag, time_t& mtime, off_t& length);
-    
+
+    void head(const std::string& path_raw, std::string& etag, time_t& mtime, off_t& length);
+
+    void remove(const std::string& path_raw);
     
     ne_session* session() const;
     

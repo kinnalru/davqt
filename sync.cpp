@@ -27,6 +27,8 @@ const QString local_mtime_c = "local_mtime";
 const QString remote_mtime_c = "remote_mtime";
 const QString size_c = "size";
 
+const QString db_t::prefix = ".davqt";
+const QString db_t::tmpprefix = ".davtmp";
 
 db_t::db_t(const QString& dbpath, const QString& localroot)
     : dbpath_(dbpath)
@@ -80,42 +82,61 @@ void db_t::save(const QString& key, const db_entry_t& e)
      
     s->beginGroup(escaped_folder);
         s->beginGroup(sv.name);
-        s->setValue(etag_c, sv.etag.c_str());
-        s->setValue(local_mtime_c, qlonglong(sv.local_mtime));
-        s->setValue(remote_mtime_c, qlonglong(sv.remote_mtime));
-        s->setValue(size_c, qulonglong(sv.size));
+        s->setValue(etag_c, sv.stat.etag.c_str());
+        s->setValue(local_mtime_c, qlonglong(sv.stat.local_mtime));
+        s->setValue(remote_mtime_c, qlonglong(sv.stat.remote_mtime));
+        s->setValue(size_c, qulonglong(sv.stat.size));
         s->endGroup();
     s->endGroup();
 }
+
+void db_t::remove(const QString& key)
+{
+    auto s = settings();
+    const QFileInfo relative = QFileInfo(localroot_.relativeFilePath(key));
+    const QString folder = relative.path();
+    const QString escaped_folder = relative.path().replace("/", "===");
+
+    auto& dbfolder = db_[folder];
+    db_entry_t& sv = dbfolder[relative.fileName()];
+    
+    qDebug() << "DB: DELETE file:" << folder << " name:" << relative.fileName()  << " raw:" << key;
+    s->beginGroup(escaped_folder);
+    s->remove(sv.name);
+    s->endGroup();
+    
+    dbfolder.erase(relative.fileName());
+}
+
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
 {
     qDebug() << "comparing :" << local.absoluteFilePath() << " <-> " << remote.path.c_str();
     action_t::TypeMask mask = 0;
     
-    if (QDateTime::fromTime_t(dbentry.local_mtime) != local.lastModified()) {
+    if (QDateTime::fromTime_t(dbentry.stat.local_mtime) != local.lastModified()) {
         mask |= action_t::local_changed;
-        qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dbentry.local_mtime) << " -> " << local.lastModified();
+        qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dbentry.stat.local_mtime) << " -> " << local.lastModified();
     }
     
-    if (dbentry.size != local.size()) {
+    if (dbentry.stat.size != local.size()) {
         mask |= action_t::local_changed;
-        qDebug() << " -> local size changed:" << dbentry.size << " -> " << local.size();
+        qDebug() << " -> local size changed:" << dbentry.stat.size << " -> " << local.size();
     }
     
-    if (QDateTime::fromTime_t(dbentry.remote_mtime) != QDateTime::fromTime_t(remote.mtime)) {
+    if (QDateTime::fromTime_t(dbentry.stat.remote_mtime) != QDateTime::fromTime_t(remote.mtime)) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.remote_mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
+        qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.stat.remote_mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
     }
     
-    if (dbentry.size != remote.size) {
+    if (dbentry.stat.size != remote.size) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> remote size changed:" << dbentry.size << " -> " << remote.size;
+        qDebug() << " -> remote size changed:" << dbentry.stat.size << " -> " << remote.size;
     }
     
-    if (dbentry.etag != remote.etag) {
+    if (dbentry.stat.etag != remote.etag) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> etag changed:" << dbentry.etag.c_str() << " -> " << remote.etag.c_str();
+        qDebug() << " -> etag changed:" << dbentry.stat.etag.c_str() << " -> " << remote.etag.c_str();
     }
     
     if (mask == action_t::local_changed) return action_t::local_changed;

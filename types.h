@@ -6,27 +6,36 @@
 #include <QString>
 #include <QFileInfo>
 
-/// describes last synx state of local and remote file
-struct db_entry_t {
+struct stat_t {
+    stat_t(const std::string& e, time_t lt, time_t rt, off_t s)
+        : etag(e), local_mtime(lt), remote_mtime(rt), size(s) {}
     
-    db_entry_t(const QString& r, const QString& f, const QString& n, const std::string& e, time_t lt, time_t rt, off_t s)
-        : root(r), folder(f), name(n), etag(e), local_mtime(lt), remote_mtime(rt), size(s)
-    {}
+    stat_t() : local_mtime(0), remote_mtime(0), size(-1) {}
     
-    db_entry_t() : local_mtime(0), remote_mtime(0), size(-1) {}
-    
-    bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && local_mtime == 0 && remote_mtime == 0 && size == -1;}
-    
-    QString root;
-    QString folder;
-    QString name;
+    bool empty() const {return local_mtime == 0 && remote_mtime == 0 && size == -1;}
     
     std::string etag;
     
     time_t local_mtime;
     time_t remote_mtime;
-    
     off_t size;
+};
+
+/// describes last synx state of local and remote file
+struct db_entry_t {
+    
+ db_entry_t(const QString& r, const QString& f, const QString& n, const std::string& e, time_t lt, time_t rt, off_t s)
+        : root(r), folder(f), name(n), stat(e, lt, rt, s) {}
+    
+    db_entry_t() {}
+    
+    bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && stat.empty();}
+    
+    QString root;
+    QString folder;
+    QString name;
+    
+    stat_t stat;
 };
 
 /// describes state of local resource

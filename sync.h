@@ -35,9 +35,14 @@
 
 struct db_t {
 
+    static const QString prefix;
+    static const QString tmpprefix;
+    
     db_t(const QString& dbpath, const QString& localroot);
    
     void save(const QString& key, const db_entry_t& e = db_entry_t());
+    
+    void remove(const QString& key);
     
     inline db_entry_t& entry(const QString& absolutepath) {
         const QFileInfo relative = QFileInfo(localroot_.relativeFilePath(absolutepath));
@@ -49,7 +54,12 @@ struct db_t {
         return e;
     }
     
-    inline QStringList entries(const QString& folder) const {
+    inline QStringList entries(QString folder) const {
+        if (localroot_.absolutePath() == folder)
+            folder = ".";
+        else
+            folder = localroot_.relativeFilePath(folder);
+
         auto it = db_.find(folder);
         return (it == db_.end())
             ? QStringList()
