@@ -88,6 +88,8 @@ struct action_t {
         : type(t), dbentry(e), local_file(lf), remote_file(rf), local(l), remote(r)
     {}
 
+    action_t() {}
+    
     db_entry_t dbentry;
     
     QString local_file;

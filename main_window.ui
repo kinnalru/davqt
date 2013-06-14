@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>main</class>
+ <widget class="QWidget" name="main">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>515</width>
+    <height>319</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="1" column="0">
+    <widget class="QTreeWidget" name="actions">
+     <property name="uniformRowHeights">
+      <bool>false</bool>
+     </property>
+     <attribute name="headerCascadingSectionResizes">
+      <bool>true</bool>
+     </attribute>
+     <attribute name="headerDefaultSectionSize">
+      <number>100</number>
+     </attribute>
+     <attribute name="headerStretchLastSection">
+      <bool>true</bool>
+     </attribute>
+     <column>
+      <property name="text">
+       <string>Files</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Progress</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item row="0" column="0">
+    <widget class="QPushButton" name="sync">
+     <property name="text">
+      <string>sync</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

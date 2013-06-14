@@ -19,9 +19,11 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QApplication>
+#include <boost/concept_check.hpp>
 
 #include "sync.h"
-
+#include "handlers.h"
 
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
@@ -327,4 +329,64 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     
     return actions;
 }
+
+sync_manager_t::sync_manager_t(QObject* parent)
+    : QThread(parent)
+{
+}
+
+sync_manager_t::~sync_manager_t()
+{
+}
+
+void sync_manager_t::start_sync(const QString& localfolder, const QString& remotefolder)
+{
+    qRegisterMetaType<action_t>("action_t");
+    qRegisterMetaType<QList<action_t>>("QList<action_t>");
+    
+    lf = localfolder;
+    rf = remotefolder;
+    start();
+}
+
+void sync_manager_t::run()
+{
+   try {
+        session_t session("https", "webdav.yandex.ru");
+    
+        session.set_auth("", "");
+        session.set_ssl();
+        session.open();
+        
+        db_t localdb(lf + "/" + db_t::prefix + "/db", rf);
+        
+        QList<action_t> actions = handle_dir(localdb, session, lf, rf);
+        Q_EMIT sync_started(actions);
+        action_processor_t processor(session, localdb);
+        
+        Q_FOREACH(const action_t& action, actions) {
+            try {
+                Q_EMIT action_started(action);
+                processor.process(action);
+                Q_EMIT action_success(action);
+            }
+            catch(const std::exception& e) {
+                qCritical() << "Error when syncing action:" << action.type << " " << action.local_file << " <-> " << action.remote_file;
+                Q_EMIT action_error(action);
+            }
+        }
+        Q_EMIT sync_finished();
+        
+    } catch (const std::exception& e) {
+        qCritical() << "Can't sync:" << lf << rf;
+    }
+}
+
+
+
+
+
+
+
+
 

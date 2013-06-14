@@ -18,44 +18,33 @@
 */
 
 
-#ifndef SYNC_H
-#define SYNC_H
+#ifndef MAIN_WINDOW_H
+#define MAIN_WINDOW_H
 
-#include <QList>
-#include <QThread>
+#include <memory>
+#include <QWidget>
 
-#include "database.h"
-#include "session.h"
+#include "sync.h"
 
-action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote);
-
-QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder);
-
-
-class sync_manager_t : public QThread{
+class main_window_t : public QWidget
+{
     Q_OBJECT
 public:
+    main_window_t(QWidget* parent = NULL);
+    virtual ~main_window_t();
     
-    sync_manager_t(QObject* parent);
-    virtual ~sync_manager_t();
+public Q_SLOTS:
+    void sync();
     
-    void start_sync(const QString& localfolder, const QString& remotefolder);
-    
-Q_SIGNALS:
     void sync_started(const QList<action_t>& actions);
     void action_started(const action_t& action);
     void action_success(const action_t& action);
     void action_error(const action_t& action);
     void sync_finished();
     
-protected:
-    virtual void run();
-    
 private:
-    QString lf;
-    QString rf;
+    struct Pimpl;
+    std::unique_ptr<Pimpl> p_;
 };
 
-
-
-#endif // SYNC_H
+#endif // MAIN_WINDOW_H

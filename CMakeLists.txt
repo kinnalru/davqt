@@ -18,21 +18,24 @@ set(HEADERS
     database.h
     handlers.h
     session.h
-    sync.h
 )
 
 set(MOC
+    main_window.h
+    sync.h    
 )
 
-set(SOURCES
+set(SOURCES 
     database.cpp
     handlers.cpp
     main.cpp
+    main_window.cpp
     session.cpp
     sync.cpp
 )
 
 set(IFACES
+    main_window.ui
 )
 
 set(RESOURCES
