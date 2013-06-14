@@ -71,6 +71,96 @@ static const std::vector<ne_propname> anonymous_prop_names = [] {
     return v;
 } ();
 
+struct auth_data_t {
+    std::string user;
+    std::string passwd;
+};
+
+static int auth(void *userdata, const char *realm, int attempt, char *user, char *pwd)
+{
+    if (attempt) {
+        return attempt;
+    }
+
+    auth_data_t* data = reinterpret_cast<auth_data_t*>(userdata);
+    
+    strncpy(user, data->user.c_str(), NE_ABUFSIZ - 1);
+    strncpy(pwd, data->passwd.c_str(), NE_ABUFSIZ - 1);
+
+    return 0;
+}
+
+static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *cert)
+{
+    char *issuer = ne_ssl_readable_dname(ne_ssl_cert_issuer(cert));
+    char *subject = ne_ssl_readable_dname(ne_ssl_cert_subject(cert));
+    char *digest = (char*)ne_calloc(NE_SSL_DIGESTLEN);
+    if (!issuer || !subject || ne_ssl_cert_digest(cert, digest) != 0) {
+        std::cerr << "error processing server certificate" << std::endl;
+            
+        if (issuer) free(issuer);
+        if (subject) free(subject);
+        if (digest) free(digest);
+        return -1;
+    }
+
+    int ret = -1;
+
+    
+    if (failures & NE_SSL_NOTYETVALID)
+        std::cerr << "the server certificate is not yet valid" << std::endl;
+    if (failures & NE_SSL_EXPIRED)
+        std::cerr << "the server certificate has expired" << std::endl;
+    if (failures & NE_SSL_IDMISMATCH)
+        std::cerr << "the server certificate does not match the server name" << std::endl;
+    if (failures & NE_SSL_UNTRUSTED)
+        std::cerr << "the server certificate is not trusted" << std::endl;
+    if (failures & ~NE_SSL_FAILMASK)
+        std::cerr << "unknown certificate error" << std::endl;
+
+    printf(("  issuer:      %s"), issuer);
+    printf("\n");
+    printf(("  subject:     %s"), subject);
+    printf("\n");
+    printf(("  identity:    %s"), ne_ssl_cert_identity(cert));
+    printf("\n");//     ne_session* session = ne_session_create("https", "webdav.yandex.ru", ne_uri_defaultport("https"));
+    printf(("  fingerprint: %s"), digest);
+    printf("\n");
+        printf(("You only should accept this certificate, if you can\n"
+                    "verify the fingerprint! The server might be faked\n"
+                    "or there might be a man-in-the-middle-attack.\n"));
+        printf(("Accept certificate for this session? [y,N] "));
+        char *s = NULL;
+        size_t n = 0;
+        ssize_t len = 0;
+        len = getline(&s, &n, stdin);
+        if (len < 0)
+            abort();
+        if (rpmatch(s) > 0)
+            ret = 0;
+        free(s);
+
+
+    if (failures & NE_SSL_NOTYETVALID)
+        std::cerr << "the server certificate is not yet valid" << std::endl;
+    if (failures & NE_SSL_EXPIRED)
+        std::cerr << "the server certificate has expired" << std::endl;
+    if (failures & NE_SSL_IDMISMATCH)
+        std::cerr << "the server certificate does not match the server name" << std::endl;
+    if (failures & NE_SSL_UNTRUSTED)
+        std::cerr << "the server certificate is not trusted" << std::endl;
+    if (failures & ~NE_SSL_FAILMASK)
+        std::cerr << "unknown certificate error" << std::endl;
+    
+    ne_ssl_cert_identity(cert);
+    
+
+    if (issuer) free(issuer);
+    if (subject) free(subject);
+    if (digest) free(digest);
+    return ret;
+}
+
 struct request_ctx_t {
     std::string path;
     std::vector<remote_res_t> resources;
@@ -173,6 +263,7 @@ static int content_reader(void *userdata, const char *buf, size_t len)
 struct session_t::Pimpl {
     
     std::shared_ptr<ne_session> session;
+    auth_data_t auth;
 };
 
 session_t::session_t(const std::string& schema, const std::string& host, unsigned int port)
@@ -189,9 +280,39 @@ session_t::session_t(const std::string& schema, const std::string& host, unsigne
 session_t::~session_t()
 {}
 
-ne_session* session_t::session() const
+void session_t::set_auth(const std::string& user, const std::string& password)
 {
-    return p_->session.get();
+    p_->auth.user = user;
+    p_->auth.passwd = password;
+    ne_add_server_auth(p_->session.get(), NE_AUTH_ALL, auth, &p_->auth);
+}
+
+void session_t::set_ssl()
+{
+    ne_ssl_set_verify(p_->session.get(), ssl_verify, NULL);
+    ne_ssl_trust_default_ca(p_->session.get());
+}
+
+void session_t::open()
+{
+    std::shared_ptr<char> path(ne_path_escape("/"), free);    
+
+    ne_server_capabilities caps = {0, 0, 0};
+    int ret = ne_options(p_->session.get(), path.get(), &caps);
+    
+    if (ret) {
+        std::cerr << ne_get_error(p_->session.get()) << std::endl;;
+        throw std::runtime_error(std::string("Can't get server options:") + ne_get_error(p_->session.get()));
+    }
+
+
+    if (caps.dav_class1 ) {
+        std::cerr << "class 1" << std::endl;
+    }
+
+    if (caps.dav_class2 ) {
+        std::cerr << "class 2" << std::endl;
+    }
 }
 
 std::vector<remote_res_t> session_t::get_resources(const std::string& path) {
@@ -452,258 +573,6 @@ void session_t::remove(const std::string& path_raw)
     }
 }
 
-struct base_handler {
-    
-    base_handler(session_t& s, db_t& d) : session(s), db(d) {}
-    
-    void update_head(const std::string& remotepath, stat_t& stat) const {
-        std::string etag;
-        time_t mtime;
-        off_t size = 0;
-
-        session.head(remotepath, etag, mtime, size);
-
-        if (stat.etag.empty()) {
-            stat.etag = etag;
-        }
-        else if (etag != stat.etag) {
-            std::cerr << "etag differs " << stat.etag << " remote:" << etag << std::endl;
-        }    
-        
-        if (stat.remote_mtime && stat.remote_mtime != mtime) {
-            std::cerr << "remote mtime differs " << stat.remote_mtime << " remote:" << mtime << std::endl;
-            stat.remote_mtime = 0;
-        }
-        
-        if (stat.size != size) {
-            std::cerr << "remote size differs " << stat.size << " remote:" << size << std::endl;
-        }
-    }
-    
-protected:
-    session_t& session;
-    db_t& db;
-};
-
-struct upload_h : base_handler {
-    upload_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
-
-        struct stat st;
-        fstat(fd, &st);
-        stat_t stat = session.put(action.remote_file.toStdString(), fd);
-        close(fd);
-        
-        qDebug() << "Rtime:" << stat.remote_mtime;
-        
-        stat.size = st.st_size;
-        stat.local_mtime = st.st_mtime;
-        
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
-            update_head(action.remote_file.toStdString(), stat);
-        }
-        
-        db_entry_t e = action.dbentry;
-        e.stat = stat;
-        db.save(e.folder + "/" + e.name, e);
-    }
-};
-
-struct download_h : base_handler {
-    download_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        const QString tmppath = action.local_file + ".davtmp";
-        int fd = open((tmppath).toStdString().c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
-        
-        stat_t stat =  session.get(action.remote.path.c_str(), fd);
-
-        struct stat st;        
-        fstat(fd, &st);
-
-        stat.size = st.st_size;
-        stat.local_mtime = st.st_mtime;
-
-        close(fd);
-
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
-            update_head(action.remote.path, stat);
-        }
-        
-        if (!QFile::rename(tmppath, action.local_file))
-            throw std::runtime_error("can't rename file");
-        
-        db_entry_t e = action.dbentry;
-        e.stat = stat;
-        db.save(e.folder + "/" + e.name, e);
-    }
-};
-
-struct conflict_h : base_handler {
-    conflict_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        const QString tmppath = action.local_file + ".davtmp";
-        int fd = open((tmppath).toStdString().c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
-        
-        stat_t stat =  session.get(action.remote.path.c_str(), fd);
-
-        struct stat st;        
-        fstat(fd, &st);
-
-        stat.size = st.st_size;
-        stat.local_mtime = st.st_mtime;
-
-        close(fd);
-
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
-            update_head(action.remote.path, stat);
-        }
-        
-        {
-            std::cerr << "need to merge and compare files:" << tmppath.toStdString() << " and " << action.local_file.toStdString() << std::endl;
-            
-//             db_entry_t e = action.dbentry;
-//             e.stat = stat;
-//             db.save(e.folder + "/" + e.name, e);
-        }
-    }
-};
-
-struct both_delete_h : base_handler {
-    both_delete_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        db.remove(action.local_file);
-    }
-};
-
-struct local_delete_h : base_handler {
-    local_delete_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        session.remove(action.remote.path);
-        db.remove(action.local_file);
-    }
-};
-
-struct remote_delete_h : base_handler {
-    remote_delete_h(session_t& s, db_t& d) : base_handler(s, d) {}
-    
-    void operator() (const action_t& action) const {
-        db.remove(action.local_file);
-    }
-};
-
-action_processor_t::action_processor_t(session_t& session, db_t& db)
-    : session_(session)
-    , db_(db)
-{
-    handlers_[action_t::upload] = upload_h(session_, db_);         //FIXME check remote etag NOT exists - yandex bug
-    handlers_[action_t::download] = download_h(session_, db_);
-    handlers_[action_t::local_changed] = upload_h(session_, db_);  //FIXME check remote etag NOT changed
-    handlers_[action_t::remote_changed] = download_h(session_, db_); 
-    handlers_[action_t::conflict] = conflict_h(session_, db_); 
-    handlers_[action_t::both_deleted] = both_delete_h(session_, db_); 
-    handlers_[action_t::local_deleted] = local_delete_h(session_, db_); 
-    handlers_[action_t::remote_deleted] = remote_delete_h(session_, db_); 
-}
-
-void action_processor_t::process(const action_t& action)
-{
-    
-//             error         = 0,        
-//         upload        = 1 << 0,
-//         download      = 1 << 1,
-//         local_changed = 1 << 2,
-//         remote_changed= 1 << 3,
-//         unchanged     = 1 << 4,
-//         conflict      = 1 << 5,
-//         both_deleted  = 1 << 6,
-//         local_deleted = 1 << 7,
-//         remote_deleted= 1 << 8,
-//         upload_dir    = 1 << 9,
-//         download_dir  = 1 << 10,
-
-            
-    auto h = handlers_.find(action.type);
-    if (h != handlers_.end()) {
-        std::cerr << "processing action: " << action.type << " " << action.local_file.toStdString() << " --> " << action.remote_file.toStdString() << std::endl;
-        h->second(action);
-        std::cerr << "completed" << std::endl;
-    }
-    else {
-         std::cerr << " == SKIP ==" << std::endl;
-    }
-            
-//     switch (action.type) {
-//         case action_t::upload: {
-// 
-//             int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
-// 
-//             struct stat st;
-//             fstat(fd, &st);
-//             stat_t status = session_.put(action.remote.path, fd);
-//             close(fd);
-//             
-//             {
-//                 int fd = open(action.local.absoluteFilePath().toStdString().c_str(), O_RDWR);
-// 
-//                 struct stat st;
-//                 fstat(fd, &st);
-//                 stat_t status = session_.put(action.remote.path, fd);
-//                 close(fd);
-//             }
-//             
-//             status.size = st.st_size;
-//             status.local_mtime = st.st_mtime;
-//             
-//             if (status.etag.empty() || status.remote_mtime == 0) {
-//                 std::string etag;
-//                 time_t mtime;
-//                 off_t size = 0;
-//                 session_.head(action.remote.path.c_str(), etag, mtime, size);
-// 
-//                 if (status.etag.empty()) {
-//                     status.etag = etag;
-//                 }
-//                 else if (etag != status.etag) {
-//                     std::cerr << "etag differs " << status.etag << " remote:" << etag << std::endl;
-//                 }    
-//                 
-//                 if (status.remote_mtime && status.remote_mtime != mtime) {
-//                     std::cerr << "remote mtime differs " << status.remote_mtime << " remote:" << mtime << std::endl;
-//                     status.remote_mtime = 0;
-//                 }
-//                 
-//                 if (status.size != size) {
-//                     std::cerr << "remote size differs " << status.size << " remote:" << size << std::endl;
-//                 }
-//             }
-//             
-//             db_entry_t e = action.dbentry;
-//             
-//             e.etag = status.etag;
-//             e.local_mtime = status.local_mtime;
-//             e.remote_mtime = status.remote_mtime;
-//             e.size = status.size;
-// //             e.path = action.local.path();
-//             
-//             db_.save(e.path, e);
-//             
-//             break;
-//         }
-//         case action_t::download: {
-//             std::cerr << "d1" << std::endl;
-//             stat_t st =  session_.get(action.remote.path.c_str(), action.local.absoluteFilePath());
-//             std::cerr << "d2" << std::endl;
-//             break;
-//         }
-//         default: std::cerr << " == SKIP ==" << std::endl;
-//     };
-}
 
 
 

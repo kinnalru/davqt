@@ -15,6 +15,7 @@ find_package(Qt4 REQUIRED QtCore QtNetwork QtGui)
 include(${QT_USE_FILE})
 
 set(HEADERS
+    handlers.h
 )
 
 set(MOC
@@ -24,6 +25,7 @@ set(SOURCES
     main.cpp
     session.cpp
     sync.cpp
+    handlers.cpp
 )
 
 set(IFACES

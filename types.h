@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <stdexcept>
 
 #include <QString>
 #include <QFileInfo>
@@ -95,3 +96,19 @@ struct action_t {
     local_res_t local;
     remote_res_t remote;
 };
+
+
+class qt_exception_t : public std::runtime_error
+{
+    const QString msg;
+public:
+    explicit qt_exception_t(const QString& msg)
+        : std::runtime_error(msg.toLocal8Bit().constData())
+        , msg(msg) {}
+        
+    ~qt_exception_t() throw() {};
+
+    const QString& message() const {return msg;}
+};
+
+

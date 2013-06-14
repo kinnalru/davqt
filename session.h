@@ -27,10 +27,7 @@
 #include <string>
 #include <functional>
 
-#include <boost/noncopyable.hpp>
-
 #include "sync.h"
-
 
 class session_t
 {
@@ -41,6 +38,10 @@ public:
     session_t(const std::string& schema, const std::string& host, unsigned int port = -1);
     ~session_t();
    
+    void set_auth(const std::string& user, const std::string& password);
+    void set_ssl();
+    void open();    
+    
     std::vector<std::string> ls(const std::string& path);
     
     time_t mtime(const std::string& path);
@@ -56,8 +57,11 @@ public:
     void head(const std::string& path_raw, std::string& etag, time_t& mtime, off_t& length);
 
     void remove(const std::string& path_raw);
+
     
-    ne_session* session() const;
+    
+    
+//     ne_session* session() const;
     
 private:
     
@@ -65,19 +69,6 @@ private:
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
-};
-
-
-class action_processor_t {
-public:
-    action_processor_t(session_t& session, db_t& db);
-    
-    void process(const action_t& action);
-
-private:
-    session_t& session_;
-    db_t& db_;
-    std::map<action_t::type_e, std::function<void (const action_t&)>> handlers_;
 };
 
 
