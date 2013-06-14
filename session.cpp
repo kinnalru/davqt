@@ -574,6 +574,31 @@ void session_t::remove(const std::string& path_raw)
     }
 }
 
+void session_t::mkcol(const std::string& path_raw)
+{
+    std::string raw = path_raw;
+    if (!raw.empty() && *(--raw.end()) != '/') {
+        raw.push_back('/');
+    }
+    
+    std::cerr << "0" << std::endl;
+    
+    std::shared_ptr<char> path(ne_path_escape(raw.c_str()), free);
+    
+    
+    int neon_stat = ne_mkcol(p_->session.get(), path.get());
+    
+    std::cerr << "1" << std::endl;
+    
+    if (neon_stat != NE_OK) {
+        std::cerr << "2" << std::endl;
+        std::cerr << "error when mkcol:" << neon_stat << " " << ne_get_error(p_->session.get()) << std::endl;
+        throw std::runtime_error(ne_get_error(p_->session.get()));
+    }    
+    std::cerr << "3" << std::endl;
+    
+    
+}
 
 
 

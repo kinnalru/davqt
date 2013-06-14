@@ -56,7 +56,7 @@ public:
 
     void remove(const std::string& path_raw);
 
-    
+    void mkcol(const std::string& path_raw);
     
     
 //     ne_session* session() const;

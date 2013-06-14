@@ -167,7 +167,6 @@ int main(int argc, char** argv)
         const QString localfolder = "/tmp/111";
         const QString remotefolder = "/1";
 
-
         qDebug() << "====== LOAD ======";        
         db_t localdb(localfolder + "/" + db_t::prefix + "/db", localfolder);
 //         localdb.load(localfolder + "/.davqt/db", localfolder);
@@ -188,6 +187,7 @@ int main(int argc, char** argv)
                 case action_t::upload_dir : std::cerr << "upload dir from " << a.local.absoluteFilePath().toStdString() << " to " << a.remote.path << std::endl; break;
                 case action_t::download_dir : std::cerr << "download dir to " << a.local.absoluteFilePath().toStdString() << " from " << a.remote.path << std::endl; break;
                 case action_t::error : std::cerr << "error in " << a.local.absoluteFilePath().toStdString() << " and " << a.remote.path << std::endl; break;
+                default: Q_ASSERT(!"wtfo");
             }
         }
 

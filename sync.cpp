@@ -63,7 +63,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
     }
     
     qDebug() << " -> UNCHANGED";
-    action_t::unchanged;
+    return action_t::unchanged;
 }
 
 QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder)
@@ -160,7 +160,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
                 remote_res_t()));
         }
         else {
-            qDebug() << "file " << file << " already exists on server - must be compared";
+            qDebug() << "added file " << file << " already exists on server - must be compared";
             auto fileinfo = find_info(file);
             auto resource = find_resource(file);
             Q_ASSERT(fileinfo != local_entries.end());
@@ -226,8 +226,10 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
                 localfile,
                 remotefile,
                 *fileinfo,
-                *resource));            
-        }
+                *resource));  
+            
+            qDebug() << "type:" << actions.back().type;
+        } 
     }
     
     Q_FOREACH(const QString& file, remote_added) {
@@ -270,7 +272,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             try {
                 actions << handle_dir(localdb, session, localdir, remotedir);
             } catch(const std::exception& e) {
-                qCritical() << "Can't handle internal dir:" << e.what();
+                qCritical() << "ERROR: Can't handle internal dir:" << e.what();
                 actions.push_back(action_t(action_t::error,
                     db_entry_t(),
                     localdir,
@@ -280,7 +282,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             }
         }
         else {
-            qDebug() << "dir " << dir << " already exists on server - BUT NOT A DIR";
+            qDebug() << "ERROR: dir " << dir << " already exists on server - BUT NOT A DIR";
             actions.push_back(action_t(action_t::error,
                 db_entry_t(),
                 localdir,
@@ -310,7 +312,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
                 *find_resource(dir)));              
         }
         else if (!localinfo->isDir()) {
-            qDebug() << "dir " << dir << " already exists localy - BUT NOT A DIR";
+            qDebug() << "ERROR: dir " << dir << " already exists localy - BUT NOT A DIR";
             actions.push_back(action_t(action_t::error,
                 localdb.entry(localdir),
                 localdir,

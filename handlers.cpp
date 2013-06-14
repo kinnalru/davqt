@@ -142,6 +142,68 @@ struct remote_deleted_handler {
     }
 };
 
+struct upload_dir_handler {
+    void operator() (session_t& session, db_t& db, const action_t& action) const {
+        
+        session.mkcol(action.remote_file.toStdString());
+        
+        Q_FOREACH(const QFileInfo& info, QDir(action.local.absoluteFilePath()).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
+            if (info.fileName() == "." || info.fileName() == "..") continue;
+            if (info.fileName() == db_t::prefix || info.suffix() == db_t::tmpprefix) continue;
+
+            action_t act(
+                action_t::error,
+                db_entry_t(),
+                info.absoluteFilePath(),
+                action.remote_file + "/" + info.fileName(),
+                info,
+                remote_res_t()
+            );  
+            
+            if (info.isDir()) {
+                act.type = action_t::upload_dir;
+                (*this)(session, db, act);
+            }
+            else {
+                act.type = action_t::upload;
+                act.dbentry = db.entry(info.absoluteFilePath());
+                upload_handler()(session, db, act);
+            }
+        }
+    }
+};
+
+struct download_dir_handler {
+    void operator() (session_t& session, db_t& db, const action_t& action) const {
+        
+        if (!QDir().mkdir(action.local_file))
+            throw qt_exception_t(QString("Can't create dir: %1").arg(action.local_file));
+        
+        Q_FOREACH(const remote_res_t& resource, session.get_resources(action.remote.path)) {
+            if (resource.name == ".") continue;
+            
+            action_t act(
+                action_t::error,
+                db_entry_t(),
+                action.local_file + "/" + resource.name.c_str(),
+                resource.path.c_str(),
+                QFileInfo(),
+                resource
+            );              
+            
+            if (resource.dir) {
+                act.type = action_t::download_dir;
+                (*this)(session, db, act);                
+            }
+            else {
+                act.type = action_t::download;
+                act.dbentry = db.entry(action.local_file + "/" + resource.name.c_str());
+                download_handler()(session, db, act);
+            }
+        }
+    }
+};
+
 action_processor_t::action_processor_t(session_t& session, db_t& db)
     : session_(session)
     , db_(db)
@@ -154,24 +216,29 @@ action_processor_t::action_processor_t(session_t& session, db_t& db)
         {action_t::conflict, conflict_handler()},
         {action_t::both_deleted, both_deleted_handler()},
         {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
-        {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed        
+        {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed
+        {action_t::upload_dir, upload_dir_handler()},
+        {action_t::download_dir, download_dir_handler()},
     };
 }
 
-void action_processor_t::process(const action_t& action)
+bool action_processor_t::process(const action_t& action)
 {
-
-//         upload_dir    = 1 << 9,
-//         download_dir  = 1 << 10,
-
     auto h = handlers_.find(action.type);
     if (h != handlers_.end()) {
         qDebug() << "\n >>> processing action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
-        h->second(session_, db_, action);
+        try {
+            h->second(session_, db_, action);
+            return true;
+        } 
+        catch (const std::exception& e) {
+            qDebug() << " >>> error:" << e.what();
+            return false;
+        }
         qDebug() << " >>> completed";
     }
     else {
-        qDebug() << "\n >>> SKIP action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
+        qDebug() << ">>> SKIP action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
     }
 }
 
