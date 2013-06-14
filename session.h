@@ -40,10 +40,6 @@ public:
     void set_ssl();
     void open();    
     
-    std::vector<std::string> ls(const std::string& path);
-    
-    time_t mtime(const std::string& path);
-    
     std::vector<remote_res_t> get_resources(const std::string& path);
     
     void get(const std::string& path_raw, ContentHandler& handler);
@@ -57,13 +53,7 @@ public:
     void remove(const std::string& path_raw);
 
     void mkcol(const std::string& path_raw);
-    
-    
-//     ne_session* session() const;
-    
-private:
-    
-    
+   
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;

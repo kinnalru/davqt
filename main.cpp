@@ -108,50 +108,6 @@ int main(int argc, char** argv)
         
         std::cerr << "5" << std::endl;
 
-        propfind_context ctx;
-        ctx.path = "/";
-        ctx.results = NULL;
-
-        std::cerr << "10" << std::endl;
-        
-        char *espath = ne_path_escape("/testf/games");
-
-        auto l = session.ls(espath);
-        
-        std::cerr << "a1" << std::endl;
-        BOOST_FOREACH(auto s, l) {
-//             std::cerr << "file:" << s << std::endl;
-        }
-        
-        std::cerr << "a2" << std::endl;
-        
-//         BOOST_FOREACH(auto s, get_res(session.session(), espath)) {
-//             std::cerr << "file path:" << s.path << std::endl;
-//             std::cerr << "file name:" << s.name << std::endl;
-// //             std::cerr << "file stat:" << s.size << std::endl;
-// //             std::cerr << "file dir:" << s.dir << std::endl;
-// //             std::cerr << "file ctime:" << s.ctime << std::endl;
-// //             std::cerr << "file mtime:" << s.mtime << std::endl;
-// //             std::cerr << "file exec:" << s.exec << std::endl;
-// //             std::cerr << "file etag:" << s.etag << std::endl;
-//         }
-//         
-        std::cerr << "a3" << std::endl;
-        
-    //     std::cerr << "11" << std::endl;
-    //     
-    //     ne_propfind_handler *ph = ne_propfind_create(session, espath, NE_DEPTH_ONE);
-    // 
-    //     std::cerr << "12" << std::endl;
-    //     
-    //     ret = ne_propfind_named(ph, prop_names, prop_result, &ctx);
-    // 
-    //     std::cerr << "13" << std::endl;
-    //     
-    // //     ret = get_error(ret, "PROPFIND");
-    //     ne_propfind_destroy(ph);
-        free(espath);
-
         std::cerr << "14" << std::endl;
         
         

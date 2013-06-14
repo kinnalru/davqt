@@ -334,25 +334,6 @@ std::vector<remote_res_t> session_t::get_resources(const std::string& path) {
     return ctx.resources;
 }
 
-std::vector<std::string> session_t::ls(const std::string& path)
-{
-    std::vector<std::string> res;
-    
-    BOOST_FOREACH(const auto& r, get_resources(path)) {
-        res.push_back(r.name);
-    }
-
-    return res;
-}
-
-time_t session_t::mtime(const std::string& path)
-{
-    BOOST_FOREACH(const auto& r, get_resources(path)) {
-        return r.mtime;
-    }
-    throw std::runtime_error("error in mtime");
-}
-
 std::string normalize_etag(const char *etag)
 {
     if (!etag) return std::string();
