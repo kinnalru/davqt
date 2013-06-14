@@ -153,8 +153,8 @@ action_processor_t::action_processor_t(session_t& session, db_t& db)
         {action_t::remote_changed, download_handler()},
         {action_t::conflict, conflict_handler()},
         {action_t::both_deleted, both_deleted_handler()},
-        {action_t::local_deleted, local_deleted_handler()},
-        {action_t::remote_deleted, remote_deleted_handler()},        
+        {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
+        {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed        
     };
 }
 

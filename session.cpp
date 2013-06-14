@@ -38,7 +38,8 @@
 #include <neon/ne_uri.h>
 #include <neon/ne_utils.h>
 #include <neon/ne_xml.h>
-#include <QDate>
+
+#include <QDebug>
 
 #include "session.h"
 

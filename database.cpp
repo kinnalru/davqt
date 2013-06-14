@@ -1,4 +1,6 @@
 
+#include <QDebug>
+
 #include "database.h"
 
 

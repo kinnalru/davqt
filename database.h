@@ -5,10 +5,7 @@
 #include <QSettings>
 #include <QDir>
 
-#include <QDebug>
-
 #include "types.h"
-
 
 struct db_t {
 

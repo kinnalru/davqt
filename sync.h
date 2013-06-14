@@ -21,21 +21,14 @@
 #ifndef SYNC_H
 #define SYNC_H
 
-#include <map>
-#include <memory>
+#include <QList>
 
-#include <QDir>
-#include <QMap>
-#include <QSettings>
-#include <QStringList>
-#include <QDebug>
-
-#include "types.h"
-
+#include "database.h"
+#include "session.h"
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote);
 
-
+QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder);
 
 
 

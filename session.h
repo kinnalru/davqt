@@ -21,13 +21,11 @@
 #ifndef SESSION_H
 #define SESSION_H
 
-#include <QString>
-#include <QFileInfo>
 #include <memory>
 #include <string>
 #include <functional>
 
-#include "sync.h"
+#include "types.h"
 
 class session_t
 {
