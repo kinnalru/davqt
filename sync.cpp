@@ -82,9 +82,6 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
         if (info.fileName() == "." || info.fileName() == "..") continue;
         if (info.fileName() == db_t::prefix || "." + info.suffix() == db_t::tmpprefix) continue;
         
-        qDebug() << " ===== file:" << info.absoluteFilePath();
-        qDebug() << "suffiz:" << info.suffix();
-        
         local_entries << info;
     };
     qDebug() << "    ok";

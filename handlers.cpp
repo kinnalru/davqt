@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QDebug>
 #include <QDateTime>
+#include <QProcess>
 
 #include "handlers.h"
 
@@ -97,11 +98,6 @@ struct conflict_handler {
         
         stat_t stat =  session.get(action.remote.path, tmpfile.handle());
 
-        const QFileInfo info(tmpfile);
-        stat.size = info.size();
-        stat.local_mtime = info.lastModified().toTime_t();
-
-
         if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
             stat = update_head(session, action.remote.path, stat);
         }
@@ -109,13 +105,17 @@ struct conflict_handler {
         //FIXME comapre and merge not realized
         {
             qDebug() << " !!! compare and merge not realized:" << tmppath << " and " << action.local_file;
-//             if (!QFile::rename(tmppath, action.local_file))
-//                 throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(tmppath).arg(action.local_file));   
-//             
-//             db_entry_t e = action.dbentry;
-//             e.stat = stat;
-//             
-//             db.save(e.folder + "/" + e.name, e);
+            if (!QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))) {
+                qDebug() << "files are same!";
+                QFile::remove(tmppath); 
+            } 
+            else {
+                qDebug() << "files are differs!";
+            }
+            
+            db_entry_t e = action.dbentry;
+            e.stat = stat;
+            db.save(e.folder + "/" + e.name, e);                
         }
     }
 };
