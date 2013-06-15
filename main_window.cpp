@@ -47,18 +47,26 @@ void main_window_t::sync()
     const QString localfolder = "/tmp/111";
     const QString remotefolder = "/1";    
 
-    sync_manager_t* manager = new sync_manager_t(0);
-    manager->start_sync(localfolder, remotefolder);
-    
-    Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));
-    Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-    Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));
+    for (int i = 0; i < QThread::idealThreadCount(); ++i) {
+        sync_manager_t* manager = new sync_manager_t(0);
 
-//     QThreadPool::globalInstance()->start(manager);
-    manager->run();
+        Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+        Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+        Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+        Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+        
+        if (i == 0) {
+            manager->start_sync(localfolder, remotefolder);
+            Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));            
+            Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));            
+            sleep(1);
+        }
+        else {
+            manager->start_part(localfolder, remotefolder);
+        }
+
+        QThreadPool::globalInstance()->start(manager);
+    }
 }
 
 QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
@@ -182,7 +190,6 @@ void main_window_t::action_progress(const action_t& action, qint64 progress, qin
 
 void main_window_t::action_finished(const action_t& action)
 {
-    qDebug() << " ===== FINISHED:" << action.local_file;
     auto it = find_item(p_->ui.actions, action.local_file);
     Q_ASSERT(it);    
     if (QProgressBar* pb = get_pb(p_->ui.actions, it->parent())) {

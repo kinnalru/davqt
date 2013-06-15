@@ -34,8 +34,8 @@ public:
     sync_manager_t(QObject* parent);
     virtual ~sync_manager_t();
     
-    Q_SLOT void start_sync(const QString& localfolder, const QString& remotefolder);
-    Q_SLOT void start_part(const QString& localfolder, const QString& remotefolder, const QList<action_t>& actions, sync_manager_t* main);
+    void start_sync(const QString& localfolder, const QString& remotefolder);
+    void start_part(const QString& localfolder, const QString& remotefolder);
 
     virtual void run();
     
@@ -53,17 +53,13 @@ protected Q_SLOTS:
     void get_progress(qint64 progress, qint64 total);
     void put_progress(qint64 progress, qint64 total);
     
-    void wait_action_success(const action_t& action);
-    
-
-    
-    
 private:
     QString lf_;
     QString rf_;
+    bool start;
+    
     action_t current_;
-    QList<action_t> actions_;
-    sync_manager_t* main_;
+    
 };
 
 
