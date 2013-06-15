@@ -22,16 +22,17 @@
 #define DAVQT_SESSION_H
 
 #include <memory>
-#include <string>
-#include <functional>
+
+#include <QObject>
 
 #include "types.h"
 
-class session_t
+class session_t : public QObject
 {
+    Q_OBJECT
 public:
     
-    session_t(const QString& schema, const QString& host, quint32 port = -1);
+    session_t(QObject* parent, const QString& schema, const QString& host, quint32 port = -1);
     ~session_t();
     
     session_t(const session_t&) = delete;
@@ -52,6 +53,15 @@ public:
 
     void mkcol(const QString& unescaped_path);
    
+Q_SIGNALS:
+    void connected();
+    void disconnected();
+    void get_progress(qint64 progress, qint64 total);
+    void put_progress(qint64 progress, qint64 total);
+
+private:
+    static void notifier(void *userdata, int status_int, const void* raw_info);
+   
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
@@ -59,3 +69,4 @@ private:
 
 
 #endif // DAVQT_SESSION_H
+

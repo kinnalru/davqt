@@ -240,14 +240,136 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     ctx->resources.push_back(resource);
 }
 
+void session_t::notifier(void* userdata, int status_int, const void* raw_info)
+{
+    ne_session_status status = ne_session_status(status_int);
+    const ne_session_status_info* info = reinterpret_cast<const ne_session_status_info*>(raw_info);
+    session_t* session = reinterpret_cast<session_t*>(userdata);
+    
+    switch (status) {
+        case ne_status_lookup:
+        case ne_status_connecting:
+            break;
+        case ne_status_connected:
+            Q_EMIT session->connected();
+            break;
+        case ne_status_sending: 
+            Q_EMIT session->put_progress(info->sr.progress, info->sr.total);
+            break;
+        case ne_status_recving:
+            Q_EMIT session->get_progress(info->sr.progress, info->sr.total);
+            break;
+        case ne_status_disconnected:
+            Q_EMIT session->disconnected();
+            break;
+        default: 
+            Q_ASSERT(!"Unhandled status type");
+    };
+//     
+//     int quiet = get_bool_option(opt_quiet);
+// 
+//     switch (out_state) {
+//     case out_none:
+//         if (quiet) break;
+// 
+//         switch (status) {
+//         case ne_status_lookup:
+//             printf(_("Looking up hostname... "));
+//             break;
+//         case ne_status_connecting:
+//             printf(_("Connecting to server... "));
+//             break;
+//         case ne_status_connected:
+//             printf(_("connected.\n"));
+//             break;
+//             default:
+//                 break;
+//         }
+//     break;
+//     case out_incommand:
+//     case out_transfer_upload:
+//     case out_transfer_download:
+//     case out_transfer_done:
+//         switch (status) {
+//         case ne_status_connecting:
+//                 if (!quiet) printf(_(" (reconnecting..."));
+//                 /* FIXME: should reset out_state here if transfer_done */
+//             break;
+//         case ne_status_connected:
+//             if (!quiet) printf(_("done)"));
+//             break;
+//             case ne_status_recving:
+//             case ne_status_sending:
+//                 /* Start of transfer: */
+//                 if ((out_state == out_transfer_download 
+//                     && status == ne_status_recving)
+//                     || (out_state == out_transfer_upload 
+//                         && status == ne_status_sending)) {
+//                     if (isatty(STDOUT_FILENO) && info->sr.total > 0) {
+//                         out_state = out_transfer_pretty;
+//                         putchar('\n');
+//                         pretty_progress_bar(info->sr.progress, info->sr.total);
+//                     } else {
+//                         out_state = out_transfer_plain;
+//                         printf(" [.");
+//                     }
+//                 }
+//                 break;                
+//             default:
+//                 break;
+//         }
+//     break;
+//     case out_transfer_plain:
+//         switch (status) {
+//         case ne_status_connecting:
+//             printf(_("] reconnecting: "));
+//             break;
+//         case ne_status_connected:
+//             printf(_("okay ["));
+//             break;
+//             case ne_status_sending:
+//             case ne_status_recving:
+//                 putchar('.');
+//                 fflush(stdout);
+//                 if (info->sr.progress == info->sr.total) {
+//                     out_state = out_transfer_done;
+//                 }
+//                 break;
+//             default:
+//                 break;
+//         }
+//     break;
+//     case out_transfer_pretty:
+//         switch (status) {
+//         case ne_status_connecting:
+//             if (!quiet) printf(_("\rTransfer timed out, reconnecting... "));
+//             break;
+//         case ne_status_connected:
+//             if (!quiet) printf(_("okay."));
+//             break;
+//             case ne_status_recving:
+//             case ne_status_sending:
+//             pretty_progress_bar(info->sr.progress, info->sr.total);
+//                 if (info->sr.progress == info->sr.total) {
+//                     out_state = out_transfer_done;
+//                 }
+//             default:
+//                 break;
+//         }
+//     break;  
+//     }
+//     fflush(stdout);
+}
+
 struct session_t::Pimpl {
     
     std::shared_ptr<ne_session> session;
     auth_data_t auth;
 };
 
-session_t::session_t(const QString& schema, const QString& host, quint32 port)
-    : p_(new Pimpl)
+session_t::session_t(QObject* parent, const QString& schema, const QString& host, quint32 port)
+    : QObject(parent)
+    , p_(new Pimpl)
 {
     p_->session.reset(
         ne_session_create(schema.toLocal8Bit().constData(), host.toLocal8Bit().constData(), (port == -1) ? ne_uri_defaultport("https") : port),
@@ -255,6 +377,9 @@ session_t::session_t(const QString& schema, const QString& host, quint32 port)
     );
     
     if (!p_->session.get()) throw std::runtime_error("Can't create session");
+    
+    
+    ne_set_notifier(p_->session.get(), ne_notify_status(session_t::notifier), this);
 }
 
 session_t::~session_t()
@@ -331,20 +456,13 @@ int post_send_handler(ne_request *req, void *userdata, const ne_status *status) 
     data->etag = normalize_etag(ne_get_response_header(req, "ETag"));
     
     const char *value = ne_get_response_header(req, "Last-Modified");
-    qDebug() << "Last-Modified1:" << value;    
     if (!value) value = ne_get_response_header(req, "Date");
 
-    qDebug() << "Last-Modified2:" << value;    
-    
     if (value) {
         data->remote_mtime = ne_httpdate_parse(value);
-        qDebug() << "Last-Modified3:" << data->remote_mtime;    
     } else {
         data->remote_mtime = 0;
     }
-    
-    std::cerr << "status:" << status->code << std::endl;
-    std::cerr << "status2:" << status->reason_phrase << std::endl;
     
     return NE_OK;
 }
@@ -356,7 +474,7 @@ void pre_send_handler(ne_request *req, void *userdata, ne_buffer *header) {
 //     ne_buffer_zappend(header, "If-Match: 123321\r\n");
 //     ne_buffer_zappend(header, "If-Match: 123321\n");
     
-    std::cerr << "here:" << header->data << std::endl;
+//     std::cerr << "here:" << header->data << std::endl;
 }
 
 void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length)
@@ -383,12 +501,9 @@ void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime
     }
 
     value = ne_get_response_header(request.get(), "Last-Modified");
-    qDebug() << "head Last-Modified1" << value;
     if (!value) value = ne_get_response_header(request.get(), "Date");
-    qDebug() << "head Last-Modified2" << value;
     if (value) {
         mtime = ne_httpdate_parse(value);
-        qDebug() << "head Last-Modified3" << mtime;
     } else {
         mtime = 0;
     }

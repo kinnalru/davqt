@@ -18,6 +18,7 @@
 */
 
 #include <QDebug>
+#include <QProgressBar>
 
 #include "tools.h"
 
@@ -47,13 +48,23 @@ void main_window_t::sync()
     const QString remotefolder = "/1";    
 
     sync_manager_t* manager = new sync_manager_t(0);
+    manager->start_sync(localfolder, remotefolder);
+    
     Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));
     Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
     Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
     Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
     Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));
-    
-    manager->start_sync(localfolder, remotefolder);
+
+//     QThreadPool::globalInstance()->start(manager);
+    manager->run();
+}
+
+QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
+    QProgressBar* pb = qobject_cast<QProgressBar*>(tree->itemWidget(item, 2));
+//     Q_ASSERT(pb);
+    return pb;
 }
 
 void main_window_t::sync_started(const QList<action_t>& actions)
@@ -68,6 +79,12 @@ void main_window_t::sync_started(const QList<action_t>& actions)
                 auto group = new QTreeWidgetItem(QStringList() << text);
                 p_->ui.actions->addTopLevelItem(group);
                 group->setExpanded(true);
+                p_->ui.actions->setItemWidget(group, 2, new QProgressBar());                
+                if (QProgressBar* pb = get_pb(p_->ui.actions, group)) {
+                    pb->setMinimum(0);
+                    pb->setMaximum(0);
+                    pb->setValue(0);
+                }
                 return group;
             } else {
                 return list.front();
@@ -94,6 +111,9 @@ void main_window_t::sync_started(const QList<action_t>& actions)
     
     Q_FOREACH(const action_t& action, actions) {
         QTreeWidgetItem* group = groupit(action.type);
+        if (QProgressBar* pb = get_pb(p_->ui.actions, group)) {
+            pb->setMaximum(pb->maximum() + 1);
+        }
         QTreeWidgetItem* item = new QTreeWidgetItem(group, QStringList() << action.local_file << tr("Not synced"));
     }
 }
@@ -123,8 +143,13 @@ void main_window_t::action_started(const action_t& action)
 {
     auto it = find_item(p_->ui.actions, action.local_file);
     Q_ASSERT(it);
-    
     it->setText(1, tr("In progress..."));
+    p_->ui.actions->setItemWidget(it, 2, new QProgressBar());                
+    if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
+        pb->setMinimum(0);
+        pb->setMaximum(0);
+        pb->setValue(0);    
+    }
 }
 
 
@@ -132,17 +157,44 @@ void main_window_t::action_success(const action_t& action)
 {
     auto it = find_item(p_->ui.actions, action.local_file);
     Q_ASSERT(it);
-    
     it->setText(1, tr("Completed"));
+    action_finished(action);    
 }
 
 void main_window_t::action_error(const action_t& action)
 {
     auto it = find_item(p_->ui.actions, action.local_file);
     Q_ASSERT(it);
-    
     it->setText(1, tr("Error"));
+    action_finished(action);    
 }
+
+void main_window_t::action_progress(const action_t& action, qint64 progress, qint64 total)
+{
+    auto it = find_item(p_->ui.actions, action.local_file);
+    Q_ASSERT(it);    
+    
+    if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
+        if (total) pb->setMaximum(total);
+        pb->setValue(progress);
+    }
+}
+
+void main_window_t::action_finished(const action_t& action)
+{
+    qDebug() << " ===== FINISHED:" << action.local_file;
+    auto it = find_item(p_->ui.actions, action.local_file);
+    Q_ASSERT(it);    
+    if (QProgressBar* pb = get_pb(p_->ui.actions, it->parent())) {
+        pb->setValue(pb->value() + 1);
+    }
+
+    if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
+        pb->deleteLater();
+        p_->ui.actions->setItemWidget(it, 2, NULL);
+    };    
+}
+
 
 void main_window_t::sync_finished()
 {

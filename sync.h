@@ -22,24 +22,22 @@
 #define DAVQT_SYNC_H
 
 #include <QList>
-#include <QThread>
+#include <QRunnable>
+#include <QThreadPool>
 
-#include "database.h"
-#include "session.h"
+#include "types.h"
 
-action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote);
-
-QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder);
-
-
-class sync_manager_t : public QThread {
+class sync_manager_t : public QObject, public QRunnable {
     Q_OBJECT
 public:
     
     sync_manager_t(QObject* parent);
     virtual ~sync_manager_t();
     
-    void start_sync(const QString& localfolder, const QString& remotefolder);
+    Q_SLOT void start_sync(const QString& localfolder, const QString& remotefolder);
+    Q_SLOT void start_part(const QString& localfolder, const QString& remotefolder, const QList<action_t>& actions, sync_manager_t* main);
+
+    virtual void run();
     
 Q_SIGNALS:
     void sync_started(const QList<action_t>& actions);
@@ -48,12 +46,24 @@ Q_SIGNALS:
     void action_error(const action_t& action);
     void sync_finished();
     
-protected:
-    virtual void run();
+    void action_progress(const action_t& action, qint64 progress, qint64 total);
+
+    
+protected Q_SLOTS:
+    void get_progress(qint64 progress, qint64 total);
+    void put_progress(qint64 progress, qint64 total);
+    
+    void wait_action_success(const action_t& action);
+    
+
+    
     
 private:
-    QString lf;
-    QString rf;
+    QString lf_;
+    QString rf_;
+    action_t current_;
+    QList<action_t> actions_;
+    sync_manager_t* main_;
 };
 
 

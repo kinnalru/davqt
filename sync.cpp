@@ -24,7 +24,7 @@
 
 #include "sync.h"
 #include "handlers.h"
-
+#include "tools.h"
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
 {
@@ -331,56 +331,136 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     return actions;
 }
 
+
 sync_manager_t::sync_manager_t(QObject* parent)
-    : QThread(parent)
+    : QObject(parent)
 {
+    static int r1 = qRegisterMetaType<action_t>("action_t");
+    static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
 }
 
 sync_manager_t::~sync_manager_t()
 {
+    qDebug() << "thread object destroyed";
 }
 
 void sync_manager_t::start_sync(const QString& localfolder, const QString& remotefolder)
 {
-    qRegisterMetaType<action_t>("action_t");
-    qRegisterMetaType<QList<action_t>>("QList<action_t>");
-    
-    lf = localfolder;
-    rf = remotefolder;
-    start();
+    lf_ = localfolder;
+    rf_ = remotefolder;
+    main_ = this;
+//     run();
+}
+
+void sync_manager_t::start_part(const QString& localfolder, const QString& remotefolder, const QList< action_t >& actions, sync_manager_t* main)
+{
+    actions_ = actions;
+    main_ = main;
+    start_sync(localfolder, remotefolder);
 }
 
 void sync_manager_t::run()
 {
-   try {
-        session_t session("https", "webdav.yandex.ru");
+    qDebug() << "thread started:" << QThread::currentThreadId();
+    try {
+        session_t session(0, "https", "webdav.yandex.ru");
     
         session.set_auth("", "");
         session.set_ssl();
         session.open();
         
-        db_t localdb(lf + "/" + db_t::prefix + "/db", lf);
+        db_t localdb(lf_ + "/" + db_t::prefix + "/db", lf_);
         
-        QList<action_t> actions = handle_dir(localdb, session, lf, rf);
-        Q_EMIT sync_started(actions);
+        QList<action_t> actions;
+        
+        sync_manager_t* sm = NULL;
+        QThread* th = NULL;
+        
+        if (actions_.isEmpty()) {
+            qDebug() << "base manger: " << actions.size();                        
+            actions = handle_dir(localdb, session, lf_, rf_);            
+            Q_EMIT sync_started(actions);            
+        } 
+        else {
+            qDebug() << "secondary manager";
+            actions = actions_;
+        }
+        
+        qDebug() << "actions size:" << actions.size();
+        if (actions.size() > 2) {
+            QList<action_t> rest = actions.mid(2, -1);
+            actions = actions.mid(0, 2);;
+            
+            qDebug() << "rest size:" << rest.size();
+            qDebug() << "new act size:" << actions.size();
+            
+            sm = new sync_manager_t(0);
+            sm->start_part(lf_, rf_, rest, main_);
+            
+//             Q_VERIFY(connect(sm, SIGNAL(action_started(action_t)), main_, SIGNAL(action_started(action_t)), Qt::BlockingQueuedConnection));
+//             Q_VERIFY(connect(sm, SIGNAL(action_success(action_t)), main_, SIGNAL(action_success(action_t)), Qt::BlockingQueuedConnection));
+//             Q_VERIFY(connect(sm, SIGNAL(action_success(action_t)), main_, SLOT(wait_action_success(action_t)), Qt::BlockingQueuedConnection));            
+//             Q_VERIFY(connect(sm, SIGNAL(action_error(action_t)), main_, SIGNAL(action_error(action_t)), Qt::BlockingQueuedConnection));
+//             Q_VERIFY(connect(sm, SIGNAL(action_progress(action_t,qint64,qint64)), main_, SIGNAL(action_progress(action_t,qint64,qint64)), Qt::BlockingQueuedConnection));
+
+            QThreadPool::globalInstance()->start(sm);
+        }
+        
+
+        
         action_processor_t processor(session, localdb);
+            
+        Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), this, SLOT(get_progress(qint64,qint64))));
+        Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), this, SLOT(put_progress(qint64,qint64))));
         
         Q_FOREACH(const action_t& action, actions) {
             try {
-                Q_EMIT action_started(action);
+                current_ = action;                
+                Q_EMIT main_->action_started(action);
+                qDebug() << QThread::currentThreadId() << "starting processing:" << action.local_file;
                 processor.process(action);
-                Q_EMIT action_success(action);
+                qDebug() << QThread::currentThreadId() << "finished processing:" << action.local_file;                
+                Q_EMIT main_->action_success(action);
+                qDebug() << QThread::currentThreadId() << "action_success processing:" << action.local_file;  
             }
             catch(const std::exception& e) {
                 qCritical() << "Error when syncing action:" << action.type << " " << action.local_file << " <-> " << action.remote_file;
-                Q_EMIT action_error(action);
+                Q_EMIT main_->action_error(action);
             }
         }
-        Q_EMIT sync_finished();
+        
+        if (actions_.isEmpty()) {
+            qDebug() << "waiting for thread..." << QThreadPool::globalInstance()->activeThreadCount();                        
+            while (!QThreadPool::globalInstance()->waitForDone(1000)) {
+                qDebug() << "waiting for thread..." << QThreadPool::globalInstance()->activeThreadCount();                        
+                if (QThreadPool::globalInstance()->activeThreadCount() == 1) break;
+            }
+            qDebug() << "waiting completed" << QThreadPool::globalInstance()->activeThreadCount();              
+        } 
+        
+        Q_EMIT main_->sync_finished();
         
     } catch (const std::exception& e) {
-        qCritical() << "Can't sync:" << lf << rf;
+        qCritical() << "Can't sync:" << lf_ << rf_;
     }
+    QThread::yieldCurrentThread();
+    qDebug() << "thread finished:" << QThread::currentThreadId();
+}
+
+void sync_manager_t::get_progress(qint64 progress, qint64 total)
+{
+    Q_EMIT main_->action_progress(current_, progress, (total) ? total : current_.remote.size);
+}
+
+void sync_manager_t::wait_action_success(const action_t& action)
+{
+    qDebug() << QThread::currentThreadId() << "SUCCESS CAHCED: " << action.local_file;
+}
+
+
+void sync_manager_t::put_progress(qint64 progress, qint64 total)
+{
+    Q_EMIT main_->action_progress(current_, progress, (total) ? total : current_.local.size());
 }
 
 

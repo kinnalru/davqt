@@ -17,13 +17,16 @@
    <item row="1" column="0">
     <widget class="QTreeWidget" name="actions">
      <property name="uniformRowHeights">
-      <bool>false</bool>
+      <bool>true</bool>
+     </property>
+     <property name="animated">
+      <bool>true</bool>
      </property>
      <attribute name="headerCascadingSectionResizes">
       <bool>true</bool>
      </attribute>
      <attribute name="headerDefaultSectionSize">
-      <number>100</number>
+      <number>110</number>
      </attribute>
      <attribute name="headerStretchLastSection">
       <bool>true</bool>
@@ -31,6 +34,11 @@
      <column>
       <property name="text">
        <string>Files</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>State</string>
       </property>
      </column>
      <column>

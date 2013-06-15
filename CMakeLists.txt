@@ -17,13 +17,13 @@ include(${QT_USE_FILE})
 set(HEADERS
     database.h
     handlers.h
-    session.h
 )
 
 set(MOC
     main_window.h
+    session.h
     sync.h    
-	tools.h
+    tools.h
 )
 
 set(SOURCES 

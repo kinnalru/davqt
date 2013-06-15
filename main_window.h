@@ -39,9 +39,11 @@ public Q_SLOTS:
     void sync_started(const QList<action_t>& actions);
     void action_started(const action_t& action);
     void action_success(const action_t& action);
+    void action_finished(const action_t& action);
+    void action_progress(const action_t& action, qint64 progress, qint64 total);        
     void action_error(const action_t& action);
     void sync_finished();
-    
+   
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
