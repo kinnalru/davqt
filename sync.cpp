@@ -20,6 +20,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QMutex>
+#include <QWaitCondition>
 
 #include "sync.h"
 #include "handlers.h"
@@ -333,6 +334,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
 QList<action_t> global_actions;
 QMutex am;
 
+QThreadPool* pool_ = NULL;
 
 sync_manager_t::sync_manager_t(QObject* parent)
     : QObject(parent)
@@ -344,6 +346,19 @@ sync_manager_t::sync_manager_t(QObject* parent)
 
 sync_manager_t::~sync_manager_t()
 {}
+
+QThreadPool* sync_manager_t::pool()
+{
+    if (!pool_) {
+        QMutexLocker l(&am);
+        if (!pool_) {
+            pool_ = new QThreadPool(0);
+            pool_->setMaxThreadCount(QThread::idealThreadCount());
+            qDebug() << "thread pool:" << pool_->maxThreadCount();
+        }
+    }
+    return pool_;
+}
 
 void sync_manager_t::start_sync(const QString& localfolder, const QString& remotefolder)
 {
@@ -360,7 +375,6 @@ void sync_manager_t::start_part(const QString& localfolder, const QString& remot
 
 void sync_manager_t::run()
 {
-    qDebug() << "thread started:" << QThread::currentThreadId();
     try {
         session_t session(0, "https", "webdav.yandex.ru");
     
@@ -375,7 +389,7 @@ void sync_manager_t::run()
             QMutexLocker l(&am);
             global_actions= handle_dir(localdb, session, lf_, rf_);    
             Q_EMIT sync_started(global_actions);
-        }
+        } 
 
         Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), this, SLOT(get_progress(qint64,qint64))));
         Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), this, SLOT(put_progress(qint64,qint64))));        
@@ -399,8 +413,13 @@ void sync_manager_t::run()
             
         }
         
-        Q_EMIT sync_finished();            
-       
+        if (start) {
+            while (!sync_manager_t::pool()->waitForDone(1000)) {
+                if (sync_manager_t::pool()->activeThreadCount() == 1) break;
+            }
+            
+            Q_EMIT sync_finished();
+        }            
     }
     catch (const std::exception& e) {
         qCritical() << "Can't sync:" << lf_ << rf_;
@@ -414,7 +433,6 @@ void sync_manager_t::get_progress(qint64 progress, qint64 total)
 
 void sync_manager_t::put_progress(qint64 progress, qint64 total)
 {
-    qDebug() << "put_progress:" << progress << " total:" << total;    
     Q_EMIT action_progress(current_, progress, (total) ? total : current_.local.size());
 }
 

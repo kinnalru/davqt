@@ -265,100 +265,6 @@ void session_t::notifier(void* userdata, int status_int, const void* raw_info)
         default: 
             Q_ASSERT(!"Unhandled status type");
     };
-//     
-//     int quiet = get_bool_option(opt_quiet);
-// 
-//     switch (out_state) {
-//     case out_none:
-//         if (quiet) break;
-// 
-//         switch (status) {
-//         case ne_status_lookup:
-//             printf(_("Looking up hostname... "));
-//             break;
-//         case ne_status_connecting:
-//             printf(_("Connecting to server... "));
-//             break;
-//         case ne_status_connected:
-//             printf(_("connected.\n"));
-//             break;
-//             default:
-//                 break;
-//         }
-//     break;
-//     case out_incommand:
-//     case out_transfer_upload:
-//     case out_transfer_download:
-//     case out_transfer_done:
-//         switch (status) {
-//         case ne_status_connecting:
-//                 if (!quiet) printf(_(" (reconnecting..."));
-//                 /* FIXME: should reset out_state here if transfer_done */
-//             break;
-//         case ne_status_connected:
-//             if (!quiet) printf(_("done)"));
-//             break;
-//             case ne_status_recving:
-//             case ne_status_sending:
-//                 /* Start of transfer: */
-//                 if ((out_state == out_transfer_download 
-//                     && status == ne_status_recving)
-//                     || (out_state == out_transfer_upload 
-//                         && status == ne_status_sending)) {
-//                     if (isatty(STDOUT_FILENO) && info->sr.total > 0) {
-//                         out_state = out_transfer_pretty;
-//                         putchar('\n');
-//                         pretty_progress_bar(info->sr.progress, info->sr.total);
-//                     } else {
-//                         out_state = out_transfer_plain;
-//                         printf(" [.");
-//                     }
-//                 }
-//                 break;                
-//             default:
-//                 break;
-//         }
-//     break;
-//     case out_transfer_plain:
-//         switch (status) {
-//         case ne_status_connecting:
-//             printf(_("] reconnecting: "));
-//             break;
-//         case ne_status_connected:
-//             printf(_("okay ["));
-//             break;
-//             case ne_status_sending:
-//             case ne_status_recving:
-//                 putchar('.');
-//                 fflush(stdout);
-//                 if (info->sr.progress == info->sr.total) {
-//                     out_state = out_transfer_done;
-//                 }
-//                 break;
-//             default:
-//                 break;
-//         }
-//     break;
-//     case out_transfer_pretty:
-//         switch (status) {
-//         case ne_status_connecting:
-//             if (!quiet) printf(_("\rTransfer timed out, reconnecting... "));
-//             break;
-//         case ne_status_connected:
-//             if (!quiet) printf(_("okay."));
-//             break;
-//             case ne_status_recving:
-//             case ne_status_sending:
-//             pretty_progress_bar(info->sr.progress, info->sr.total);
-//                 if (info->sr.progress == info->sr.total) {
-//                     out_state = out_transfer_done;
-//                 }
-//             default:
-//                 break;
-//         }
-//     break;  
-//     }
-//     fflush(stdout);
 }
 
 struct session_t::Pimpl {
@@ -541,14 +447,10 @@ stat_t session_t::put(const QString& unescaped_path, int fd)
     ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
     ne_hook_post_send(p_->session.get(), post_send_handler, &data);
 
-    std::cerr << "p1" << std::endl;    
     int neon_stat = ne_put(p_->session.get(), path.get(), fd);
-    std::cerr << "p2" << std::endl;    
     
     ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
     ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
-    
-    std::cerr << "stat:" << neon_stat << std::endl;
     
     if (neon_stat != NE_OK) {
         std::cerr << "error when put:" << ne_get_error(p_->session.get()) << std::endl;
@@ -577,23 +479,14 @@ void session_t::mkcol(const QString& raw)
         unescaped_path.push_back('/');
     }
     
-    std::cerr << "0" << std::endl;
-    
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
-    
     
     int neon_stat = ne_mkcol(p_->session.get(), path.get());
     
-    std::cerr << "1" << std::endl;
-    
     if (neon_stat != NE_OK) {
-        std::cerr << "2" << std::endl;
         std::cerr << "error when mkcol:" << neon_stat << " " << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }    
-    std::cerr << "3" << std::endl;
-    
-    
 }
 
 

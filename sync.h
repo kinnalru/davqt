@@ -39,6 +39,8 @@ public:
 
     virtual void run();
     
+    static QThreadPool* pool();
+    
 Q_SIGNALS:
     void sync_started(const QList<action_t>& actions);
     void action_started(const action_t& action);

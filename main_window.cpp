@@ -47,26 +47,30 @@ void main_window_t::sync()
     const QString localfolder = "/tmp/111";
     const QString remotefolder = "/1";    
 
-    for (int i = 0; i < QThread::idealThreadCount(); ++i) {
-        sync_manager_t* manager = new sync_manager_t(0);
-
-        Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-        Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-        Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
-        Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-        
-        if (i == 0) {
-            manager->start_sync(localfolder, remotefolder);
-            Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));            
-            Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));            
-            sleep(1);
+    
+    sync_manager_t* manager = new sync_manager_t(0);
+    manager->start_sync(localfolder, remotefolder);
+    
+    Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+    Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));            
+    Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));            
+    sync_manager_t::pool()->start(manager);
+    
+    Q_VERIFY(::connect(manager, SIGNAL(sync_started(QList<action_t>)), [=] {
+        for (int i = 0; i < sync_manager_t::pool()->maxThreadCount(); ++i) {
+            sync_manager_t* m = new sync_manager_t(0);
+            m->start_part(localfolder, remotefolder);
+            
+            Q_VERIFY(connect(m, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+            Q_VERIFY(connect(m, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+            Q_VERIFY(connect(m, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+            Q_VERIFY(connect(m, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+            sync_manager_t::pool()->start(m);
         }
-        else {
-            manager->start_part(localfolder, remotefolder);
-        }
-
-        QThreadPool::globalInstance()->start(manager);
-    }
+    }));
 }
 
 QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
@@ -205,7 +209,7 @@ void main_window_t::action_finished(const action_t& action)
 
 void main_window_t::sync_finished()
 {
-    qDebug() << "completed";
+    qDebug() << "! =========== completed";
 }
 
 
