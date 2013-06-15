@@ -9,17 +9,17 @@
 #include "handlers.h"
 
 stat_t& update_head(session_t& session, const QString& remotepath, stat_t& stat) {
-    std::string etag;
+    QString etag;
     time_t mtime;
     off_t size = 0;
 
-    session.head(remotepath.toStdString(), etag, mtime, size);
+    session.head(remotepath, etag, mtime, size);
 
-    if (stat.etag.empty()) {
+    if (stat.etag.isEmpty()) {
         stat.etag = etag;
     }
     else if (etag != stat.etag) {
-        qDebug() << "etag differs " << stat.etag.c_str() << " remote:" << etag.c_str();
+        qDebug() << "etag differs " << stat.etag << " remote:" << etag;
     }    
     
     if (stat.remote_mtime && stat.remote_mtime != mtime) {
@@ -40,7 +40,7 @@ struct upload_handler {
         if (!file.open(QIODevice::ReadOnly)) 
             throw qt_exception_t(QString("Can't open file %1 for reading").arg(action.local.absoluteFilePath()));
         
-        stat_t stat = session.put(action.remote_file.toStdString(), file.handle());
+        stat_t stat = session.put(action.remote_file, file.handle());
         qDebug() << "Rtime:" << stat.remote_mtime;
         
         
@@ -48,7 +48,7 @@ struct upload_handler {
         stat.size = info.size();
         stat.local_mtime = info.lastModified().toTime_t();
         
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
+        if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
             stat = update_head(session, action.remote_file, stat);
         }
         
@@ -66,15 +66,15 @@ struct download_handler {
         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
             throw qt_exception_t(QString("Can't create file %1").arg(tmppath));        
         
-        stat_t stat =  session.get(action.remote.path.c_str(), tmpfile.handle());
+        stat_t stat =  session.get(action.remote.path, tmpfile.handle());
 
         const QFileInfo info(tmpfile);
         stat.size = info.size();
         stat.local_mtime = info.lastModified().toTime_t();
 
 
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
-            stat = update_head(session, action.remote.path.c_str(), stat);
+        if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
+            stat = update_head(session, action.remote.path, stat);
         }
         
         QFile::remove(action.local_file);        
@@ -95,15 +95,15 @@ struct conflict_handler {
         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
             throw qt_exception_t(QString("Can't create file %1").arg(tmppath));        
         
-        stat_t stat =  session.get(action.remote.path.c_str(), tmpfile.handle());
+        stat_t stat =  session.get(action.remote.path, tmpfile.handle());
 
         const QFileInfo info(tmpfile);
         stat.size = info.size();
         stat.local_mtime = info.lastModified().toTime_t();
 
 
-        if (stat.etag.empty() || stat.remote_mtime == 0) {
-            stat = update_head(session, action.remote.path.c_str(), stat);
+        if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
+            stat = update_head(session, action.remote.path, stat);
         }
         
         //FIXME comapre and merge not realized
@@ -145,7 +145,7 @@ struct remote_deleted_handler {
 struct upload_dir_handler {
     void operator() (session_t& session, db_t& db, const action_t& action) const {
         
-        session.mkcol(action.remote_file.toStdString());
+        session.mkcol(action.remote_file);
         
         Q_FOREACH(const QFileInfo& info, QDir(action.local.absoluteFilePath()).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
             if (info.fileName() == "." || info.fileName() == "..") continue;
@@ -185,8 +185,8 @@ struct download_dir_handler {
             action_t act(
                 action_t::error,
                 db_entry_t(),
-                action.local_file + "/" + resource.name.c_str(),
-                resource.path.c_str(),
+                action.local_file + "/" + resource.name,
+                resource.path,
                 QFileInfo(),
                 resource
             );              
@@ -197,7 +197,7 @@ struct download_dir_handler {
             }
             else {
                 act.type = action_t::download;
-                act.dbentry = db.entry(action.local_file + "/" + resource.name.c_str());
+                act.dbentry = db.entry(action.local_file + "/" + resource.name);
                 download_handler()(session, db, act);
             }
         }

@@ -18,8 +18,8 @@
 */
 
 
-#ifndef SYNC_H
-#define SYNC_H
+#ifndef DAVQT_SYNC_H
+#define DAVQT_SYNC_H
 
 #include <QList>
 #include <QThread>
@@ -32,7 +32,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
 QList<action_t> handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder);
 
 
-class sync_manager_t : public QThread{
+class sync_manager_t : public QThread {
     Q_OBJECT
 public:
     
@@ -58,4 +58,4 @@ private:
 
 
 
-#endif // SYNC_H
+#endif // DAVQT_SYNC_H

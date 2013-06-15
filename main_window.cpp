@@ -19,6 +19,8 @@
 
 #include <QDebug>
 
+#include "tools.h"
+
 #include "ui_main_window.h"
 #include "main_window.h"
 
@@ -45,11 +47,11 @@ void main_window_t::sync()
     const QString remotefolder = "/1";    
 
     sync_manager_t* manager = new sync_manager_t(0);
-    Q_ASSERT(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));
-    Q_ASSERT(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-    Q_ASSERT(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-    Q_ASSERT(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
-    Q_ASSERT(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));
+    Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));
+    Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+    Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));
     
     manager->start_sync(localfolder, remotefolder);
 }
@@ -57,35 +59,89 @@ void main_window_t::sync()
 void main_window_t::sync_started(const QList<action_t>& actions)
 {
     p_->ui.actions->clear();
+    
+    auto groupit = [this] (action_t::type_e type) -> QTreeWidgetItem* {
+        auto find = [this] (const QString& text) {
+            auto list = p_->ui.actions->findItems(text, Qt::MatchExactly);
+            Q_ASSERT(list.size() <= 1);
+            if (list.isEmpty()) {
+                auto group = new QTreeWidgetItem(QStringList() << text);
+                p_->ui.actions->addTopLevelItem(group);
+                group->setExpanded(true);
+                return group;
+            } else {
+                return list.front();
+            }
+        };
+        
+        switch(type) {
+            case action_t::error:       return find(tr("Errors"));
+            case action_t::upload:      return find(tr("Files to upload"));
+            case action_t::download:        return find(tr("Files to download"));
+            case action_t::local_changed:   return find(tr("Upload local changes"));
+            case action_t::remote_changed:  return find(tr("Download remote changes"));
+            case action_t::unchanged:   return find(tr("Unchanged"));
+            case action_t::conflict:    return find(tr("Conflicts"));
+            case action_t::both_deleted:    return find(tr("Deleted"));
+            case action_t::local_deleted:   return find(tr("Locally deleted files"));
+            case action_t::remote_deleted:  return find(tr("Remotely deleted files"));
+            case action_t::upload_dir:      return find(tr("Folders to upload"));
+            case action_t::download_dir:    return find(tr("Folders to download"));
+            default: Q_ASSERT(!"unhandled action type");
+        };
+        return NULL;
+    };
+    
     Q_FOREACH(const action_t& action, actions) {
-        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.local_file << "not started");
-        p_->ui.actions->addTopLevelItem(item);
+        QTreeWidgetItem* group = groupit(action.type);
+        QTreeWidgetItem* item = new QTreeWidgetItem(group, QStringList() << action.local_file << tr("Not synced"));
     }
+}
+
+
+QList<QTreeWidgetItem*> all_items(const QTreeWidget* tree) {
+    QList<QTreeWidgetItem*> ret;
+
+    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* it = tree->topLevelItem(i);
+        ret << it;
+        for (int c = 0; c < it->childCount(); ++ c) {
+            ret << it->child(c);
+        }
+    }
+    return ret;
+}
+
+QTreeWidgetItem* find_item(const QTreeWidget* tree, const QString& text) {
+    Q_FOREACH(auto it, all_items(tree)) {
+        if (it->text(0) == text) return it;
+    }
+    return NULL;
 }
 
 void main_window_t::action_started(const action_t& action)
 {
-    auto list = p_->ui.actions->findItems(action.local_file, Qt::MatchExactly);
-    Q_ASSERT(list.size() == 1);
+    auto it = find_item(p_->ui.actions, action.local_file);
+    Q_ASSERT(it);
     
-    list.first()->setText(1, "inprogress...");
+    it->setText(1, tr("In progress..."));
 }
 
 
 void main_window_t::action_success(const action_t& action)
 {
-    auto list = p_->ui.actions->findItems(action.local_file, Qt::MatchExactly);
-    Q_ASSERT(list.size() == 1);
+    auto it = find_item(p_->ui.actions, action.local_file);
+    Q_ASSERT(it);
     
-    list.first()->setText(1, "completed");
+    it->setText(1, tr("Completed"));
 }
 
 void main_window_t::action_error(const action_t& action)
 {
-    auto list = p_->ui.actions->findItems(action.local_file, Qt::MatchExactly);
-    Q_ASSERT(list.size() == 1);
+    auto it = find_item(p_->ui.actions, action.local_file);
+    Q_ASSERT(it);
     
-    list.first()->setText(1, "error");
+    it->setText(1, tr("Error"));
 }
 
 void main_window_t::sync_finished()

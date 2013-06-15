@@ -8,14 +8,14 @@
 #include <QFileInfo>
 
 struct stat_t {
-    stat_t(const std::string& e, time_t lt, time_t rt, off_t s)
+    stat_t(const QString& e, time_t lt, time_t rt, off_t s)
         : etag(e), local_mtime(lt), remote_mtime(rt), size(s) {}
     
     stat_t() : local_mtime(0), remote_mtime(0), size(-1) {}
     
     bool empty() const {return local_mtime == 0 && remote_mtime == 0 && size == -1;}
     
-    std::string etag;
+    QString etag;
     
     time_t local_mtime;
     time_t remote_mtime;
@@ -25,7 +25,7 @@ struct stat_t {
 /// describes last synx state of local and remote file
 struct db_entry_t {
     
- db_entry_t(const QString& r, const QString& f, const QString& n, const std::string& e, time_t lt, time_t rt, off_t s)
+ db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s)
         : root(r), folder(f), name(n), stat(e, lt, rt, s) {}
     
     db_entry_t() {}
@@ -45,10 +45,10 @@ typedef QFileInfo local_res_t;
 /// describes state of remote resource
 struct remote_res_t {
     
-    std::string path;   /* The unescaped path of the resource. */
-    std::string name;   /* The name of the file or directory. Only the last
+    QString path;   /* The unescaped path of the resource. */
+    QString name;   /* The name of the file or directory. Only the last
                            component (no path), no slashes. */
-    std::string etag;   /* The etag string, including quotation characters,
+    QString etag;   /* The etag string, including quotation characters,
                            but without the mark for weak etags. */
     bool dir;
                            
@@ -62,7 +62,7 @@ struct remote_res_t {
         not_executable,
     } exec;
     
-    inline bool empty() const {return path.empty() && name.empty();}
+    inline bool empty() const {return path.isEmpty() && name.isEmpty();}
 };
 
 /// describes action needed to perform

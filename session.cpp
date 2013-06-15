@@ -68,13 +68,13 @@ static const std::vector<ne_propname> prop_names = [] {
 
 static const std::vector<ne_propname> anonymous_prop_names = [] {
     std::vector<ne_propname> v = prop_names;
-    BOOST_FOREACH(auto& pn, v) pn.nspace = NULL;
+    for(auto it = v.begin(); it != v.end(); ++ it) it->nspace = NULL;
     return v;
 } ();
 
 struct auth_data_t {
-    std::string user;
-    std::string passwd;
+    QString user;
+    QString passwd;
 };
 
 static int auth(void *userdata, const char *realm, int attempt, char *user, char *pwd)
@@ -85,8 +85,8 @@ static int auth(void *userdata, const char *realm, int attempt, char *user, char
 
     auth_data_t* data = reinterpret_cast<auth_data_t*>(userdata);
     
-    strncpy(user, data->user.c_str(), NE_ABUFSIZ - 1);
-    strncpy(pwd, data->passwd.c_str(), NE_ABUFSIZ - 1);
+    strncpy(user, qPrintable(data->user), NE_ABUFSIZ - 1);
+    strncpy(pwd, qPrintable(data->passwd), NE_ABUFSIZ - 1);
 
     return 0;
 }
@@ -163,7 +163,7 @@ static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *ce
 }
 
 struct request_ctx_t {
-    std::string path;
+    QString path;
     std::vector<remote_res_t> resources;
 };
 
@@ -229,36 +229,15 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
         resource.exec = remote_res_t::executable;
     }
     
-    std::shared_ptr<char> path(strdup(resource.path.c_str()), free);
+    std::shared_ptr<char> path(strdup(qPrintable(resource.path)), free);
     resource.name = basename(path.get());
     
-    std::shared_ptr<char> qpath(strdup(ctx->path.c_str()), free);
+    std::shared_ptr<char> qpath(strdup(qPrintable(ctx->path)), free);
     
-    if (resource.name == std::string(basename(qpath.get()))) 
+    if (resource.name == QString(basename(qpath.get()))) 
         resource.name = ".";
     
     ctx->resources.push_back(resource);
-}
-
-static int content_reader(void *userdata, const char *buf, size_t len)
-{
-    session_t::ContentHandler* handler = reinterpret_cast<session_t::ContentHandler*>(userdata);
-    assert(handler);
-    assert(buf);
-
-    try {
-        const size_t handled = (*handler)(buf, len);
-        if (len != handled) {
-            std::cerr << "content handler handles " << handled << " bytes instead of " << len << " in buffer\n";
-            return NE_ERROR;
-        }
-    }
-    catch (const std::exception& e) {
-        std::cerr << "content handler throw exception:" << e.what() << "\n";
-        return NE_ERROR;
-    }
-
-    return NE_OK;
 }
 
 struct session_t::Pimpl {
@@ -267,11 +246,11 @@ struct session_t::Pimpl {
     auth_data_t auth;
 };
 
-session_t::session_t(const std::string& schema, const std::string& host, unsigned int port)
+session_t::session_t(const QString& schema, const QString& host, quint32 port)
     : p_(new Pimpl)
 {
     p_->session.reset(
-        ne_session_create(schema.c_str(), host.c_str(), (port == -1) ? ne_uri_defaultport("https") : port),
+        ne_session_create(schema.toLocal8Bit().constData(), host.toLocal8Bit().constData(), (port == -1) ? ne_uri_defaultport("https") : port),
         ne_session_destroy
     );
     
@@ -281,7 +260,7 @@ session_t::session_t(const std::string& schema, const std::string& host, unsigne
 session_t::~session_t()
 {}
 
-void session_t::set_auth(const std::string& user, const std::string& password)
+void session_t::set_auth(const QString& user, const QString& password)
 {
     p_->auth.user = user;
     p_->auth.passwd = password;
@@ -316,10 +295,10 @@ void session_t::open()
     }
 }
 
-std::vector<remote_res_t> session_t::get_resources(const std::string& path) {
+std::vector<remote_res_t> session_t::get_resources(const QString& path) {
     
     std::shared_ptr<ne_propfind_handler> ph(
-        ne_propfind_create(p_->session.get(), path.c_str(), NE_DEPTH_ONE),
+        ne_propfind_create(p_->session.get(), qPrintable(path), NE_DEPTH_ONE),
         ne_propfind_destroy            
     );
 
@@ -334,15 +313,15 @@ std::vector<remote_res_t> session_t::get_resources(const std::string& path) {
     return ctx.resources;
 }
 
-std::string normalize_etag(const char *etag)
+QString normalize_etag(const char *etag)
 {
-    if (!etag) return std::string();
+    if (!etag) return QString();
 
     const char * e = etag;
-    if (*e == 'W') return std::string();
-    if (!*e) return std::string();
+    if (*e == 'W') return QString();
+    if (!*e) return QString();
 
-    return std::string(etag);
+    return QString(etag);
 }
 
 int post_send_handler(ne_request *req, void *userdata, const ne_status *status) {
@@ -380,12 +359,9 @@ void pre_send_handler(ne_request *req, void *userdata, ne_buffer *header) {
     std::cerr << "here:" << header->data << std::endl;
 }
 
-void session_t::head(const std::string& path_raw, std::string& etag, time_t& mtime, off_t& length)
+void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length)
 {
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
     std::shared_ptr<ne_request> request(
         ne_request_create(p_->session.get(), "HEAD", path.get()),
@@ -425,50 +401,9 @@ void session_t::head(const std::string& path_raw, std::string& etag, time_t& mti
     }    
 }
 
-
-
-void session_t::get(const std::string& path_raw, ContentHandler& handler)
+stat_t session_t::get(const QString& unescaped_path, int fd)
 {
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
-    
-   std::shared_ptr<ne_request> request(
-        ne_request_create(p_->session.get(), "GET", path.get()),
-        ne_request_destroy
-    );
-
-//     /* Allow compressed content by setting the header */
-//     ne_add_request_header(request.get(), "Accept-Encoding", "gzip");
-    
-    /* hook called before the content is parsed to set the correct reader,
-        * either the compressed- or uncompressed reader.
-        */
-//     ne_hook_post_headers(session, install_content_reader, write_ctx );
-    
-    ne_add_response_body_reader(request.get(), ne_accept_2xx, content_reader, &handler);    
-    
-    int neon_stat = ne_request_dispatch(request.get());
-    
-    if( neon_stat != NE_OK ) {
-        std::cerr << "Error GET: Neon: %d, errno %d" <<  neon_stat <<  " no:" << errno;
-    } else {
-        const ne_status* status = ne_get_status(request.get());
-        std::cerr << "GET http result %d (%s)" <<  status->code << " phrase:" << (status->reason_phrase ? status->reason_phrase : "<empty") << std::endl;
-        if( status->klass != 2 ) {
-            std::cerr << "sendfile request failed with http status %d!" <<  status->code;
-        }
-    }  
-}
-
-stat_t session_t::get(const std::string& path_raw, int fd)
-{
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
-
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     stat_t data;
     
     ne_hook_post_send(p_->session.get(), post_send_handler, &data);
@@ -483,41 +418,9 @@ stat_t session_t::get(const std::string& path_raw, int fd)
     return data;
 }
 
-
-void session_t::put(const std::string& path_raw, const std::vector<char>& buffer)
+stat_t session_t::put(const QString& unescaped_path, int fd)
 {
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
-
-    std::shared_ptr<ne_request> request(
-        ne_request_create(p_->session.get(), "PUT", path.get()),
-        ne_request_destroy
-    );
-
-    ne_set_request_body_buffer(request.get(), buffer.data(), buffer.size());
-
-    int  neon_stat = ne_request_dispatch(request.get());
-
-    if( neon_stat != NE_OK ) {
-        std::cerr << "Error PUT: Neon: " <<  neon_stat <<  " errno:" << errno << " string:" << ne_get_error(p_->session.get()) << std::endl;
-    } else {
-        const ne_status* status = ne_get_status(request.get());
-        std::cerr << "PUT http result %d (%s)" <<  status->code << " phrase:" << (status->reason_phrase ? status->reason_phrase : "<empty") << std::endl;
-        if( status->klass != 2 ) {
-            std::cerr << "sendfile request failed with http status %d!" <<  status->code;
-        }
-    }  
-}
-
-stat_t session_t::put(const std::string& path_raw, int fd)
-{
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
-
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     stat_t data;
     
     ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
@@ -540,12 +443,9 @@ stat_t session_t::put(const std::string& path_raw, int fd)
     return data;
 }
 
-void session_t::remove(const std::string& path_raw)
+void session_t::remove(const QString& unescaped_path)
 {
-    std::shared_ptr<char> path(
-        ne_path_escape(path_raw.c_str()),
-        free
-    );
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
     int neon_stat = ne_delete(p_->session.get(), path.get());
     
@@ -555,16 +455,16 @@ void session_t::remove(const std::string& path_raw)
     }
 }
 
-void session_t::mkcol(const std::string& path_raw)
+void session_t::mkcol(const QString& raw)
 {
-    std::string raw = path_raw;
-    if (!raw.empty() && *(--raw.end()) != '/') {
-        raw.push_back('/');
+    QString unescaped_path = raw;
+    if (!unescaped_path.isEmpty() && unescaped_path.right(1) != "/") {
+        unescaped_path.push_back('/');
     }
     
     std::cerr << "0" << std::endl;
     
-    std::shared_ptr<char> path(ne_path_escape(raw.c_str()), free);
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
     
     int neon_stat = ne_mkcol(p_->session.get(), path.get());

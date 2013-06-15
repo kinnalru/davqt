@@ -28,7 +28,7 @@
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
 {
-    qDebug() << "comparing :" << local.absoluteFilePath() << " <-> " << remote.path.c_str();
+    qDebug() << "comparing :" << local.absoluteFilePath() << " <-> " << remote.path;
     action_t::TypeMask mask = 0;
     
     if (QDateTime::fromTime_t(dbentry.stat.local_mtime) != local.lastModified()) {
@@ -53,7 +53,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
     
     if (dbentry.stat.etag != remote.etag) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> etag changed:" << dbentry.stat.etag.c_str() << " -> " << remote.etag.c_str();
+        qDebug() << " -> etag changed:" << dbentry.stat.etag << " -> " << remote.etag;
     }
     
     if (mask == action_t::local_changed) return action_t::local_changed;
@@ -71,7 +71,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
 QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder)
 {
     qDebug() << "requesting remote cache for " << remotefolder << " ...";
-    const std::vector<remote_res_t> remote_entries = session.get_resources(remotefolder.toStdString());
+    const std::vector<remote_res_t> remote_entries = session.get_resources(remotefolder);
     qDebug() << "    ok";
 
     
@@ -80,8 +80,11 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     
     Q_FOREACH(const QFileInfo& info, QDir(localfolder).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
         if (info.fileName() == "." || info.fileName() == "..") continue;
-        if (info.fileName() == db_t::prefix || info.suffix() == db_t::tmpprefix) continue;
-            
+        if (info.fileName() == db_t::prefix || "." + info.suffix() == db_t::tmpprefix) continue;
+        
+        qDebug() << " ===== file:" << info.absoluteFilePath();
+        qDebug() << "suffiz:" << info.suffix();
+        
         local_entries << info;
     };
     qDebug() << "    ok";
@@ -107,11 +110,12 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     auto remoteNames = [] (const std::vector<remote_res_t>& list, filter f) {
         QSet<QString> names;
         Q_FOREACH(const auto& resource, list) {
-            if (resource.name == "." || resource.name == "..") continue;    
+            if (resource.name == "." || resource.name == "..") continue; 
+            if ("." + QFileInfo(resource.name).suffix() == db_t::tmpprefix) continue;
             if (f == files && resource.dir) continue;
             if (f == folders && !resource.dir) continue;
             
-            names << resource.name.c_str();
+            names << resource.name;
         }
         return names;
     };
@@ -123,7 +127,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     
     //helper function to find resource by name
     auto find_resource = [&remote_entries] (const QString& file) {
-        return std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const remote_res_t& r) { return r.name == file.toStdString(); });
+        return std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const remote_res_t& r) { return r.name == file; });
     };
     
     // Step 1 - making snapshot in filenames of local/remote 'filesystem'
@@ -258,7 +262,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
         const QString localdir = localfolder + "/" + dir;
         const QString remotedir = remotefolder + "/" + dir;
         
-        auto resource = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const remote_res_t& r) { return r.name == dir.toStdString(); });
+        auto resource = std::find_if(remote_entries.begin(), remote_entries.end(), [&] (const remote_res_t& r) { return r.name == dir; });
         
         if (resource == remote_entries.end()) {
             qDebug() << "dir " << dir << " must be uploaded to server";
@@ -358,7 +362,7 @@ void sync_manager_t::run()
         session.set_ssl();
         session.open();
         
-        db_t localdb(lf + "/" + db_t::prefix + "/db", rf);
+        db_t localdb(lf + "/" + db_t::prefix + "/db", lf);
         
         QList<action_t> actions = handle_dir(localdb, session, lf, rf);
         Q_EMIT sync_started(actions);

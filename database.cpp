@@ -38,7 +38,7 @@ db_t::db_t(const QString& dbpath, const QString& localroot)
                 localroot_.absolutePath(),
                 folder,
                 file,
-                s->value(etag_c).toString().toStdString(),
+                s->value(etag_c).toString(),
                 s->value(local_mtime_c).toLongLong(),
                 s->value(remote_mtime_c).toLongLong(),
                 s->value(size_c).toULongLong()
@@ -101,7 +101,7 @@ void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
     group_h g1(*s, escaped_folder);
     group_h g2(*s, sv.name);
 
-    s->setValue(etag_c, sv.stat.etag.c_str());
+    s->setValue(etag_c, sv.stat.etag);
     s->setValue(local_mtime_c, qlonglong(sv.stat.local_mtime));
     s->setValue(remote_mtime_c, qlonglong(sv.stat.remote_mtime));
     s->setValue(size_c, qulonglong(sv.stat.size));

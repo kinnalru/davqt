@@ -18,8 +18,8 @@
 */
 
 
-#ifndef SESSION_H
-#define SESSION_H
+#ifndef DAVQT_SESSION_H
+#define DAVQT_SESSION_H
 
 #include <memory>
 #include <string>
@@ -31,28 +31,26 @@ class session_t
 {
 public:
     
-    typedef std::function<size_t (const char*, size_t)> ContentHandler;
-    
-    session_t(const std::string& schema, const std::string& host, unsigned int port = -1);
+    session_t(const QString& schema, const QString& host, quint32 port = -1);
     ~session_t();
+    
+    session_t(const session_t&) = delete;
+    session_t& operator=(const session_t&) = delete;
    
-    void set_auth(const std::string& user, const std::string& password);
+    void set_auth(const QString& user, const QString& password);
     void set_ssl();
     void open();    
     
-    std::vector<remote_res_t> get_resources(const std::string& path);
+    std::vector<remote_res_t> get_resources(const QString& path);
     
-    void get(const std::string& path_raw, ContentHandler& handler);
-    stat_t get(const std::string& path_raw, int fd);
-    
-    void put(const std::string& path_raw, const std::vector<char>& buffer);
-    stat_t put(const std::string& path_raw, int fd);
+    stat_t get(const QString& unescaped_path, int fd);
+    stat_t put(const QString& unescaped_path, int fd);
 
-    void head(const std::string& path_raw, std::string& etag, time_t& mtime, off_t& length);
+    void head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length);
 
-    void remove(const std::string& path_raw);
+    void remove(const QString& unescaped_path);
 
-    void mkcol(const std::string& path_raw);
+    void mkcol(const QString& unescaped_path);
    
 private:
     struct Pimpl;
@@ -60,4 +58,4 @@ private:
 };
 
 
-#endif // SESSION_H
+#endif // DAVQT_SESSION_H

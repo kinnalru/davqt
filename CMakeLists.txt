@@ -23,6 +23,7 @@ set(HEADERS
 set(MOC
     main_window.h
     sync.h    
+	tools.h
 )
 
 set(SOURCES 
