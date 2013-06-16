@@ -109,12 +109,8 @@ void main_window_t::status_updated(const Actions& actions)
             case action_t::download:        return find(tr("Files to download"));
             case action_t::local_changed:   return find(tr("Upload local changes"));
             case action_t::remote_changed:  return find(tr("Download remote changes"));
-            case action_t::unchanged:   {
-                QTreeWidgetItem* group = find(tr("Unchanged"));
-                group->setExpanded(false);
-                return group;
-            }
-            case action_t::conflict:    return find(tr("Conflicts"));
+            case action_t::unchanged:       return find(tr("Unchanged"));
+            case action_t::conflict:        return find(tr("Conflicts"));
             case action_t::both_deleted:    return find(tr("Deleted"));
             case action_t::local_deleted:   return find(tr("Locally deleted files"));
             case action_t::remote_deleted:  return find(tr("Remotely deleted files"));
@@ -132,6 +128,16 @@ void main_window_t::status_updated(const Actions& actions)
         }
         QTreeWidgetItem* item = new QTreeWidgetItem(group, QStringList() << action.local_file << tr("Not synced"));
     }
+
+    p_->ui.actions->resizeColumnToContents(0);
+    p_->ui.actions->resizeColumnToContents(1);
+    p_->ui.actions->resizeColumnToContents(2);
+    
+    auto it = groupit(action_t::unchanged);
+    if (it->childCount())
+        it->setExpanded(false);
+    else
+        delete it;
     
     p_->actions = actions;
 }

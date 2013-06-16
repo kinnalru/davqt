@@ -8,6 +8,7 @@ const QString etag_c = "etag";
 const QString local_mtime_c = "local_mtime";
 const QString remote_mtime_c = "remote_mtime";
 const QString size_c = "size";
+const QString perms_c = "permissions";
 
 const QString db_t::prefix = ".davqt";
 const QString db_t::tmpprefix = ".davtmp";
@@ -19,7 +20,8 @@ struct group_h {
 };
 
 db_t::db_t(const QString& dbpath, const QString& localroot)
-    : dbpath_(dbpath)
+    : mx_(QMutex::Recursive)
+    , dbpath_(dbpath)
     , localroot_(localroot)
 {
     auto s = settings();
@@ -43,12 +45,22 @@ db_t::db_t(const QString& dbpath, const QString& localroot)
                 s->value(remote_mtime_c).toLongLong(),
                 s->value(size_c).toULongLong()
             );
+            dbfolder[file].stat.perms = QFile::Permissions(s->value(perms_c).toInt());
         }
     }
 }
 
+bool db_t::skip(const QString& path)
+{
+    const QFileInfo info(path);
+    return info.fileName() == "." || info.fileName() == ".."
+        || info.fileName() == db_t::prefix
+        || "." + info.suffix() == db_t::tmpprefix;
+}
+
 QString db_t::dbfolder(const QString& absolutefilepath) const
 {
+    QMutexLocker l(&mx_);
     const QFileInfo relative = QFileInfo(localroot_.relativeFilePath(absolutefilepath));
     return relative.path();
 }
@@ -71,6 +83,7 @@ QString db_t::unesacpe(QString escapedpath) const
 
 db_entry_t& db_t::entry(const QString& absolutefilepath)
 {
+    QMutexLocker l(&mx_);
     const QString folder = dbfolder(absolutefilepath);
     const QString file = dbfile(absolutefilepath);
 
@@ -80,8 +93,15 @@ db_entry_t& db_t::entry(const QString& absolutefilepath)
     return e;
 }
 
+db_entry_t db_t::get_entry(const QString& absolutefilepath) const
+{
+    return const_cast<db_t*>(this)->entry(absolutefilepath);
+}
+
+
 void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
 {
+    QMutexLocker l(&mx_);    
     auto s = settings();
     
     const QString folder = dbfolder(absolutefilepath);
@@ -105,10 +125,12 @@ void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
     s->setValue(local_mtime_c, qlonglong(sv.stat.local_mtime));
     s->setValue(remote_mtime_c, qlonglong(sv.stat.remote_mtime));
     s->setValue(size_c, qulonglong(sv.stat.size));
+    s->setValue(perms_c, static_cast<int>(sv.stat.perms));
 }
 
 void db_t::remove(const QString& absolutefilepath)
 {
+    QMutexLocker l(&mx_);      
     auto s = settings();
 
     const QString folder = dbfolder(absolutefilepath);
@@ -127,6 +149,7 @@ void db_t::remove(const QString& absolutefilepath)
 
 QStringList db_t::entries(QString folder) const
 {
+    QMutexLocker l(&mx_);      
     if (localroot_.absolutePath() == folder)
         folder = ".";
     else

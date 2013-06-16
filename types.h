@@ -20,6 +20,7 @@ struct stat_t {
     time_t local_mtime;
     time_t remote_mtime;
     off_t size;
+    QFile::Permissions perms;
 };
 
 /// describes last synx state of local and remote file
@@ -56,6 +57,8 @@ struct remote_res_t {
     time_t ctime;       /* Creation date. */
     time_t mtime;       /* Date of last modification. */
 
+    QFile::Permissions perms;
+    
     enum exec_e {
         none,
         executable,

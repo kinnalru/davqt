@@ -8,7 +8,15 @@
 
 class action_processor_t {
 public:
-    action_processor_t(session_t& session, db_t& db);
+    struct resolve_ctx {
+        const action_t& action;
+        QString local_old;
+        QString remote_new;
+        QString result;
+    };
+    
+    typedef std::function<bool (resolve_ctx&)> Resolver;
+    action_processor_t(session_t& session, db_t& db, Resolver resolver);
     
     bool process(const action_t& action);
 

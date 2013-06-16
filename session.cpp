@@ -51,6 +51,7 @@ enum {
     MODIFIED,
     TYPE,
     EXECUTE,
+    PERMISSIONS,
     END
 };
 
@@ -62,6 +63,7 @@ static const std::vector<ne_propname> prop_names = [] {
     v[MODIFIED] = {"DAV:", "getlastmodified"};
     v[TYPE]     = {"DAV:", "resourcetype"};
     v[EXECUTE]  = {"http://apache.org/dav/props/", "executable"};
+    v[PERMISSIONS]  = {"DAVQT:", "permissions"};
     v[END]      = {NULL, NULL}; 
     return v;
 } ();
@@ -198,6 +200,12 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     if (!data) data = ne_propset_value(set, &anonymous_prop_names[LENGTH]);
     resource.size = boost::lexical_cast<off_t>(data);
 
+    data = ne_propset_value(set, &prop_names[PERMISSIONS]);
+    if (!data) data = ne_propset_value(set, &anonymous_prop_names[PERMISSIONS]);
+    if (data) {
+        resource.perms = QFile::Permissions(boost::lexical_cast<int>(data));
+    }
+    
     data = ne_propset_value(set, &prop_names[CREATION]);
     if (!data) data = ne_propset_value(set, &anonymous_prop_names[CREATION]);
     resource.ctime = 0;
@@ -337,7 +345,6 @@ std::vector<remote_res_t> session_t::get_resources(const QString& path) {
     ctx.path = path;
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
-        std::cerr << "Err:" << err << " error:" << errno << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
     
@@ -420,6 +427,28 @@ void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime
     } else {
         length = -1;
     }    
+}
+
+void session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems)
+{
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);    
+    const std::string value = boost::lexical_cast<std::string>(prems);
+    
+    const ne_proppatch_operation ops[2] = {
+        {
+            &prop_names[PERMISSIONS],
+            ne_propset,
+            value.c_str()
+        },
+        NULL
+    };
+
+    int neon_stat = ne_proppatch(p_->session.get(), path.get(), ops);
+    
+    if (neon_stat != NE_OK) {
+        std::cerr << "error when ne_proppatch:" << ne_get_error(p_->session.get()) << std::endl;
+        throw std::runtime_error(ne_get_error(p_->session.get()));
+    }
 }
 
 stat_t session_t::get(const QString& unescaped_path, int fd)

@@ -39,11 +39,12 @@ struct upload_handler {
         QFile file(action.local.absoluteFilePath());
         
         if (!file.open(QIODevice::ReadOnly)) 
-            throw qt_exception_t(QString("Can't open file %1 for reading").arg(action.local.absoluteFilePath()));
+            throw qt_exception_t(QString("Can't open file %1: %2").arg(action.local.absoluteFilePath()).arg(file.errorString()));
         
         stat_t stat = session.put(action.remote_file, file.handle());
-        qDebug() << "Rtime:" << stat.remote_mtime;
+        stat.perms = file.permissions();
         
+        session.set_permissions(action.remote_file, stat.perms);
         
         const QFileInfo info(file);
         stat.size = info.size();
@@ -64,10 +65,12 @@ struct download_handler {
         const QString tmppath = action.local_file + db_t::tmpprefix;
         
         QFile tmpfile(tmppath);
-        if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-            throw qt_exception_t(QString("Can't create file %1").arg(tmppath));        
+        if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate )) 
+            throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
         
         stat_t stat =  session.get(action.remote.path, tmpfile.handle());
+        stat.perms = action.remote.perms;
+        tmpfile.setPermissions(stat.perms);
 
         const QFileInfo info(tmpfile);
         stat.size = info.size();
@@ -78,9 +81,10 @@ struct download_handler {
             stat = update_head(session, action.remote.path, stat);
         }
         
-        QFile::remove(action.local_file);        
-        if (!QFile::rename(tmppath, action.local_file))
-            throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(tmppath).arg(action.local_file));   
+        QFile::remove(action.local_file);
+        
+        if (!tmpfile.rename(action.local_file))
+            throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(action.local_file).arg(tmpfile.errorString()));   
         
         db_entry_t e = action.dbentry;
         e.stat = stat;
@@ -89,35 +93,60 @@ struct download_handler {
 };
 
 struct conflict_handler {
+    action_processor_t::Resolver resolver_;
+    conflict_handler(action_processor_t::Resolver r) : resolver_(r) {}
+
     void operator() (session_t& session, db_t& db, const action_t& action) const {
         const QString tmppath = action.local_file + db_t::tmpprefix;
         
         QFile tmpfile(tmppath);
         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-            throw qt_exception_t(QString("Can't create file %1").arg(tmppath));        
+            throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
+        
+        tmpfile.setPermissions(action.local.permissions());
         
         stat_t stat =  session.get(action.remote.path, tmpfile.handle());
-
+        stat.perms = tmpfile.permissions();
+        
         if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
             stat = update_head(session, action.remote.path, stat);
         }
         
-        //FIXME comapre and merge not realized
-        {
-            qDebug() << " !!! compare and merge not realized:" << tmppath << " and " << action.local_file;
-            if (!QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))) {
-                qDebug() << "files are same!";
-                stat.local_mtime = action.local.lastModified().toTime_t();
-                stat.size = action.local.size();
-                QFile::remove(tmppath); 
-            } 
-            else {
-                qDebug() << "files are differs!";
-            }
+        if (!QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))) {
+            qDebug() << "files are same!";
+            stat.local_mtime = action.local.lastModified().toTime_t();
+            stat.size = action.local.size();
+            QFile::remove(tmppath); 
+            
+            session.set_permissions(action.remote_file, stat.perms);
             
             db_entry_t e = action.dbentry;
             e.stat = stat;
-            db.save(e.folder + "/" + e.name, e);                
+            db.save(e.folder + "/" + e.name, e);                       
+        } 
+        else {
+            action_processor_t::resolve_ctx ctx = {
+                action,
+                action.local_file,
+                tmppath                    
+            };
+            qDebug() << "files are differs : stat resolving...";
+            if (resolver_(ctx)) {
+                qDebug() << "Conflict resolved: result = " << ctx.result;
+                
+                QFile::remove(tmppath); 
+                QFile::remove(action.local_file);
+                
+                if (!QFile::rename(ctx.result, action.local_file))
+                    throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result).arg(action.local_file));                       
+                
+                QFile::setPermissions(action.local_file, stat.perms);
+                
+                upload_handler()(session, db, action);                
+            }
+            else {
+                qDebug() << "Can't resolve conflict!";
+            }
         }
     }
 };
@@ -150,8 +179,7 @@ struct upload_dir_handler {
         session.mkcol(action.remote_file);
         
         Q_FOREACH(const QFileInfo& info, QDir(action.local.absoluteFilePath()).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
-            if (info.fileName() == "." || info.fileName() == "..") continue;
-            if (info.fileName() == db_t::prefix || info.suffix() == db_t::tmpprefix) continue;
+            if (db_t::skip(info.fileName())) continue;
 
             action_t act(
                 action_t::error,
@@ -168,7 +196,7 @@ struct upload_dir_handler {
             }
             else {
                 act.type = action_t::upload;
-                act.dbentry = db.entry(info.absoluteFilePath());
+                act.dbentry = db.get_entry(info.absoluteFilePath());
                 upload_handler()(session, db, act);
             }
         }
@@ -182,7 +210,7 @@ struct download_dir_handler {
             throw qt_exception_t(QString("Can't create dir: %1").arg(action.local_file));
         
         Q_FOREACH(const remote_res_t& resource, session.get_resources(action.remote.path)) {
-            if (resource.name == ".") continue;
+            if (db_t::skip(resource.name)) continue;
             
             action_t act(
                 action_t::error,
@@ -199,14 +227,14 @@ struct download_dir_handler {
             }
             else {
                 act.type = action_t::download;
-                act.dbentry = db.entry(action.local_file + "/" + resource.name);
+                act.dbentry = db.get_entry(action.local_file + "/" + resource.name);
                 download_handler()(session, db, act);
             }
         }
     }
 };
 
-action_processor_t::action_processor_t(session_t& session, db_t& db)
+action_processor_t::action_processor_t(session_t& session, db_t& db, Resolver resolver)
     : session_(session)
     , db_(db)
 {
@@ -215,12 +243,13 @@ action_processor_t::action_processor_t(session_t& session, db_t& db)
         {action_t::download, download_handler()},
         {action_t::local_changed, upload_handler()},    //FIXME check remote etag NOT changed
         {action_t::remote_changed, download_handler()},
-        {action_t::conflict, conflict_handler()},
+        {action_t::conflict, conflict_handler(resolver)},
         {action_t::both_deleted, both_deleted_handler()},
         {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
         {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed
         {action_t::upload_dir, upload_dir_handler()},
         {action_t::download_dir, download_dir_handler()},
+        {action_t::unchanged, [] (session_t& session, db_t& db, const action_t& action) {}}
     };
 }
 
@@ -229,18 +258,12 @@ bool action_processor_t::process(const action_t& action)
     auto h = handlers_.find(action.type);
     if (h != handlers_.end()) {
         qDebug() << "\n >>> processing action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
-        try {
-            h->second(session_, db_, action);
-            return true;
-        } 
-        catch (const std::exception& e) {
-            qDebug() << " >>> error:" << e.what();
-            return false;
-        }
+        h->second(session_, db_, action);
         qDebug() << " >>> completed";
     }
     else {
-        qDebug() << ">>> SKIP action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
+        qCritical() << "unhandled action type!:" << action.type;
+        Q_ASSERT(!"unhandled action type!");
     }
 }
 

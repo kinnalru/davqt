@@ -21,6 +21,7 @@
 #include <QDebug>
 #include <QMutex>
 #include <QWaitCondition>
+#include <QProcess>
 
 #include "sync.h"
 #include "handlers.h"
@@ -41,6 +42,11 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
         qDebug() << " -> local size changed:" << dbentry.stat.size << " -> " << local.size();
     }
     
+    if (dbentry.stat.perms != local.permissions()) {
+        mask |= action_t::local_changed;
+        qDebug() << " -> local permissions changed:" << dbentry.stat.perms << " -> " << local.permissions();
+    }
+    
     if (QDateTime::fromTime_t(dbentry.stat.remote_mtime) != QDateTime::fromTime_t(remote.mtime)) {
         mask |= action_t::remote_changed;
         qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.stat.remote_mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
@@ -49,6 +55,11 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
     if (dbentry.stat.size != remote.size) {
         mask |= action_t::remote_changed;
         qDebug() << " -> remote size changed:" << dbentry.stat.size << " -> " << remote.size;
+    }
+    
+    if (dbentry.stat.perms != remote.perms) {
+        mask |= action_t::remote_changed;
+        qDebug() << " -> remote permissions changed:" << dbentry.stat.perms << " -> " << remote.perms;
     }
     
     if (dbentry.stat.etag != remote.etag) {
@@ -79,8 +90,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     QFileInfoList local_entries;
     
     Q_FOREACH(const QFileInfo& info, QDir(localfolder).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
-        if (info.fileName() == "." || info.fileName() == "..") continue;
-        if (info.fileName() == db_t::prefix || "." + info.suffix() == db_t::tmpprefix) continue;
+        if (db_t::skip(info.fileName())) continue;
         
         local_entries << info;
     };
@@ -94,7 +104,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     auto justNames = [] (const QFileInfoList& list, filter f) {
         QSet<QString> names;
         Q_FOREACH(const auto& info, list) {
-            if (info.fileName() == "." || info.fileName() == "..") continue;
+            if (db_t::skip(info.absoluteFilePath())) continue;
             if (f == files && info.isDir() ) continue;
             if (f == folders && !info.isDir() ) continue;
             
@@ -107,8 +117,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     auto remoteNames = [] (const std::vector<remote_res_t>& list, filter f) {
         QSet<QString> names;
         Q_FOREACH(const auto& resource, list) {
-            if (resource.name == "." || resource.name == "..") continue; 
-            if ("." + QFileInfo(resource.name).suffix() == db_t::tmpprefix) continue;
+            if (db_t::skip(resource.name)) continue;
             if (f == files && resource.dir) continue;
             if (f == folders && !resource.dir) continue;
             
@@ -156,7 +165,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             auto fileinfo = find_info(file);
             Q_ASSERT(fileinfo != local_entries.end());
             actions.push_back(action_t(action_t::upload,
-                localdb.entry(localfile),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *find_info(file),
@@ -168,8 +177,8 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             auto resource = find_resource(file);
             Q_ASSERT(fileinfo != local_entries.end());
             Q_ASSERT(resource != remote_entries.end());
-            actions.push_back(action_t(compare(localdb.entry(localfile), *fileinfo, *resource),
-                localdb.entry(localfile),
+            actions.push_back(action_t(compare(localdb.get_entry(localfile), *fileinfo, *resource),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
@@ -184,7 +193,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
         if (!remote_entries_set.contains(file)) {
             qDebug() << "file " << file << " deleted and ON server too";
             actions.push_back(action_t(action_t::both_deleted,
-                localdb.entry(localfile),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 QFileInfo(),
@@ -195,7 +204,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             auto resource = find_resource(file);          
             Q_ASSERT(resource != remote_entries.end());            
             actions.push_back(action_t(action_t::local_deleted,
-                localdb.entry(localfile),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 QFileInfo(),
@@ -212,7 +221,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             Q_ASSERT(fileinfo != local_entries.end());            
             qDebug() << "file " << file << " deleted on server must be deleted localy";
             actions.push_back(action_t(action_t::remote_deleted,
-                localdb.entry(localfile),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
@@ -224,8 +233,8 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
             auto resource = find_resource(file);                      
             Q_ASSERT(fileinfo != local_entries.end());   
             Q_ASSERT(resource != remote_entries.end());     
-            actions.push_back(action_t(compare(localdb.entry(localfile), *fileinfo, *resource),
-                localdb.entry(localfile),
+            actions.push_back(action_t(compare(localdb.get_entry(localfile), *fileinfo, *resource),
+                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
@@ -243,7 +252,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
         auto resource = find_resource(file);                      
         Q_ASSERT(resource != remote_entries.end());          
         actions.push_back(action_t(action_t::download,
-            localdb.entry(localfile),
+            localdb.get_entry(localfile),
             localfile,
             remotefile,
             QFileInfo(),
@@ -317,7 +326,7 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
         else if (!localinfo->isDir()) {
             qDebug() << "ERROR: dir " << dir << " already exists localy - BUT NOT A DIR";
             actions.push_back(action_t(action_t::error,
-                localdb.entry(localdir),
+                localdb.get_entry(localdir),
                 localdir,
                 remotedir,
                 *localinfo,
@@ -386,15 +395,13 @@ struct runnable_t : public QRunnable {
 
 void sync_manager_t::update_status()
 {
-    auto updater =  [this, conn_, localdb_, lf_, rf_] () mutable {
+    auto updater =  [this, conn_, &localdb_, lf_, rf_] () mutable {
         try {
             session_t session(0, conn_.schema, conn_.host, conn_.port);
         
             session.set_auth(conn_.login, conn_.password);
             session.set_ssl();
             session.open();
-            
-            action_processor_t processor(session, localdb_);
             
             const QList<action_t> actions = handle_dir(localdb_, session, lf_, rf_);    
             Q_EMIT status_updated(actions);
@@ -415,7 +422,7 @@ void sync_manager_t::sync(const Actions& act)
     
     //actions are shared between threads - dont forget safe reset
     std::shared_ptr<Actions> actions(new Actions(act));
-    auto syncer = [this, conn_, localdb_, actions] () mutable {
+    auto syncer = [this, conn_, &localdb_, actions] () mutable {
         try {
             session_t session(0, conn_.schema, conn_.host, conn_.port);
         
@@ -429,7 +436,10 @@ void sync_manager_t::sync(const Actions& act)
             Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
             Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
             
-            action_processor_t processor(session, localdb_);
+            action_processor_t processor(session, localdb_, [] (action_processor_t::resolve_ctx& ctx) {
+                ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
+                return !QProcess::execute(QString("kdiff3 -o %3 %1 %2").arg(ctx.local_old).arg(ctx.remote_new).arg(ctx.result));
+            });
             
             action_t current;
             
@@ -450,7 +460,7 @@ void sync_manager_t::sync(const Actions& act)
                     Q_EMIT action_success(current);
                 }
                 catch(const std::exception& e) {
-                    qCritical() << "Error when syncing action:" << current.type << " " << current.local_file << " <-> " << current.remote_file;
+                    qCritical() << "Error when syncing action:" << current.type << " " << current.local_file << " <-> " << current.remote_file << " " << e.what();
                     Q_EMIT action_error(current);
                 }
                 
