@@ -14,6 +14,24 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QPushButton" name="update">
+       <property name="text">
+        <string>update</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="sync">
+       <property name="text">
+        <string>sync</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
    <item row="1" column="0">
     <widget class="QTreeWidget" name="actions">
      <property name="uniformRowHeights">
@@ -46,13 +64,6 @@
        <string>Progress</string>
       </property>
      </column>
-    </widget>
-   </item>
-   <item row="0" column="0">
-    <widget class="QPushButton" name="sync">
-     <property name="text">
-      <string>sync</string>
-     </property>
     </widget>
    </item>
   </layout>

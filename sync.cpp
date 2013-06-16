@@ -331,17 +331,18 @@ QList< action_t > handle_dir(db_t& localdb, session_t& session, const QString& l
     return actions;
 }
 
-QList<action_t> global_actions;
-QMutex am;
+QMutex poolmx;
+QThreadPool* pool_s = NULL;
 
-QThreadPool* pool_ = NULL;
-
-sync_manager_t::sync_manager_t(QObject* parent)
+sync_manager_t::sync_manager_t(QObject* parent, sync_manager_t::connection conn, const QString& localfolder, const QString& remotefolder)
     : QObject(parent)
-    , start(false)
+    , conn_(conn)
+    , lf_(localfolder), rf_(remotefolder)
+    , localdb_(lf_ + "/" + db_t::prefix + "/db", lf_)
 {
     static int r1 = qRegisterMetaType<action_t>("action_t");
     static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
+    static int r3 = qRegisterMetaType<Actions>("Actions");    
 }
 
 sync_manager_t::~sync_manager_t()
@@ -349,92 +350,135 @@ sync_manager_t::~sync_manager_t()
 
 QThreadPool* sync_manager_t::pool()
 {
-    if (!pool_) {
-        QMutexLocker l(&am);
-        if (!pool_) {
-            pool_ = new QThreadPool(0);
-            pool_->setMaxThreadCount(QThread::idealThreadCount());
-            qDebug() << "thread pool:" << pool_->maxThreadCount();
+    if (!pool_s) {
+        QMutexLocker l(&poolmx);
+        if (!pool_s) {
+            pool_s = new QThreadPool(0);
+            pool_s->setMaxThreadCount(QThread::idealThreadCount());
         }
     }
-    return pool_;
+    return pool_s;
 }
 
-void sync_manager_t::start_sync(const QString& localfolder, const QString& remotefolder)
-{
-    lf_ = localfolder;
-    rf_ = remotefolder;
-    start = true;
-}
-
-void sync_manager_t::start_part(const QString& localfolder, const QString& remotefolder)
-{
-    lf_ = localfolder;
-    rf_ = remotefolder;
-}
-
-void sync_manager_t::run()
-{
-    try {
-        session_t session(0, "https", "webdav.yandex.ru");
+template <typename Function>
+void run_in_thread(QThread* th, Function func) {
+    QTimer* timer = new QTimer(0);
+    timer->setInterval(0);
+    timer->setSingleShot(true);
+    QObject::connect(th, SIGNAL(started()), timer, SLOT(start()));
     
-        session.set_auth("", "");
-        session.set_ssl();
-        session.open();
+    ::connect(timer, SIGNAL(timeout()), [th, timer, func] {
+        timer->deleteLater();
+        func();
+    });
+
+    timer->moveToThread(th);
+}
+
+struct runnable_t : public QRunnable {
+    template <typename Function>
+    runnable_t(Function func) : func_(func) {};
+    virtual ~runnable_t() {}
+    
+    virtual void run () {func_();}
+    std::function<void ()> func_;
+};
+
+void sync_manager_t::update_status()
+{
+    auto updater =  [this, conn_, localdb_, lf_, rf_] () mutable {
+        try {
+            session_t session(0, conn_.schema, conn_.host, conn_.port);
         
-        db_t localdb(lf_ + "/" + db_t::prefix + "/db", lf_);
-        action_processor_t processor(session, localdb);
-        
-        if (start) {
-            QMutexLocker l(&am);
-            global_actions= handle_dir(localdb, session, lf_, rf_);    
-            Q_EMIT sync_started(global_actions);
+            session.set_auth(conn_.login, conn_.password);
+            session.set_ssl();
+            session.open();
+            
+            action_processor_t processor(session, localdb_);
+            
+            const QList<action_t> actions = handle_dir(localdb_, session, lf_, rf_);    
+            Q_EMIT status_updated(actions);
         } 
+        catch (const std::exception& e) {
+            Q_EMIT status_error(e.what());
+        }
+    };
+    
+    pool()->start(new runnable_t(updater));
+}
 
-        Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), this, SLOT(get_progress(qint64,qint64))));
-        Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), this, SLOT(put_progress(qint64,qint64))));        
+QMutex syncmx;
 
-        Q_FOREVER {
-            {
-                QMutexLocker l(&am);
-                if (global_actions.isEmpty()) break;
-                current_ = global_actions.takeFirst();
-            }
+void sync_manager_t::sync(const Actions& act)
+{
+    Q_EMIT sync_started();
+    
+    //actions are shared between threads - dont forget safe reset
+    std::shared_ptr<Actions> actions(new Actions(act));
+    auto syncer = [this, conn_, localdb_, actions] () mutable {
+        try {
+            session_t session(0, conn_.schema, conn_.host, conn_.port);
+        
+            session.set_auth(conn_.login, conn_.password);
+            session.set_ssl();
+            session.open();
+
+            progress_adapter_t adapter;
             
-            try {
-                Q_EMIT action_started(current_);
-                processor.process(current_);
-                Q_EMIT action_success(current_);
-            }
-            catch(const std::exception& e) {
-                qCritical() << "Error when syncing action:" << current_.type << " " << current_.local_file << " <-> " << current_.remote_file;
-                Q_EMIT action_error(current_);
-            }
+            Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+            Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+            Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
             
+            action_processor_t processor(session, localdb_);
+            
+            action_t current;
+            
+            Q_FOREVER {
+                {
+                    QMutexLocker l(&syncmx);
+                    if (actions->isEmpty()) {
+                        break;
+                    }
+                    current = actions->takeFirst();
+                }
+                
+                adapter.set_action(current);
+            
+                try {
+                    Q_EMIT action_started(current);
+                    processor.process(current);
+                    Q_EMIT action_success(current);
+                }
+                catch(const std::exception& e) {
+                    qCritical() << "Error when syncing action:" << current.type << " " << current.local_file << " <-> " << current.remote_file;
+                    Q_EMIT action_error(current);
+                }
+                
+            }
+        }
+        catch (const std::exception& e) {
+            qCritical() << "Can't sync:" << lf_ << rf_;
         }
         
-        if (start) {
-            while (!sync_manager_t::pool()->waitForDone(1000)) {
-                if (sync_manager_t::pool()->activeThreadCount() == 1) break;
-            }
-            
-            Q_EMIT sync_finished();
-        }            
-    }
-    catch (const std::exception& e) {
-        qCritical() << "Can't sync:" << lf_ << rf_;
-    }
+        QMutexLocker l(&syncmx);
+        actions.reset();        
+    };
+    
+    pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
+    
+    QThread* controler = new QThread();
+    connect(controler, SIGNAL(finished()), controler, SLOT(deleteLater()));
+    run_in_thread(controler, [this, controler] {
+        pool()->waitForDone();        
+        Q_EMIT sync_finished();
+        controler->quit();
+    });
+    controler->start();
+
 }
 
-void sync_manager_t::get_progress(qint64 progress, qint64 total)
-{
-    Q_EMIT action_progress(current_, progress, (total) ? total : current_.remote.size);
-}
-
-void sync_manager_t::put_progress(qint64 progress, qint64 total)
-{
-    Q_EMIT action_progress(current_, progress, (total) ? total : current_.local.size());
-}
 
 
 

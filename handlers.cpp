@@ -107,6 +107,8 @@ struct conflict_handler {
             qDebug() << " !!! compare and merge not realized:" << tmppath << " and " << action.local_file;
             if (!QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))) {
                 qDebug() << "files are same!";
+                stat.local_mtime = action.local.lastModified().toTime_t();
+                stat.size = action.local.size();
                 QFile::remove(tmppath); 
             } 
             else {

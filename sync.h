@@ -26,44 +26,69 @@
 #include <QThreadPool>
 
 #include "types.h"
+#include "database.h"
 
-class sync_manager_t : public QObject, public QRunnable {
+class sync_manager_t : public QObject {
     Q_OBJECT
 public:
     
-    sync_manager_t(QObject* parent);
+    struct connection {
+        QString schema;
+        QString host;
+        quint32 port;
+        QString login;
+        QString password;
+    };
+    
+    sync_manager_t(QObject* parent, connection conn, const QString& localfolder, const QString& remotefolder);
     virtual ~sync_manager_t();
-    
-    void start_sync(const QString& localfolder, const QString& remotefolder);
-    void start_part(const QString& localfolder, const QString& remotefolder);
 
-    virtual void run();
+static QThreadPool* pool();
+
+public Q_SLOTS:
+    void update_status();
+    void sync(const Actions& act);
     
-    static QThreadPool* pool();
+
     
 Q_SIGNALS:
-    void sync_started(const QList<action_t>& actions);
+    void status_updated(const Actions& actions);
+    void status_error(const QString& error);
+    
+    void sync_started();
+    void sync_finished();
+    
     void action_started(const action_t& action);
     void action_success(const action_t& action);
     void action_error(const action_t& action);
-    void sync_finished();
-    
-    void action_progress(const action_t& action, qint64 progress, qint64 total);
 
     
-protected Q_SLOTS:
-    void get_progress(qint64 progress, qint64 total);
-    void put_progress(qint64 progress, qint64 total);
-    
+    void progress(const action_t& action, qint64 progress, qint64 total);
+
 private:
-    QString lf_;
-    QString rf_;
-    bool start;
-    
-    action_t current_;
-    
+    const connection conn_;
+    const QString lf_;
+    const QString rf_;
+    db_t localdb_;    
 };
 
+
+class progress_adapter_t : public QObject {
+    Q_OBJECT
+public: 
+    explicit progress_adapter_t() {}
+    void set_action(const action_t& a) {action_ = a;}
+    
+Q_SIGNALS:
+    void progress(const action_t& action, qint64 progress, qint64 total);
+    
+public Q_SLOTS:
+    void int_progress(qint64 prog, qint64 total) {
+        Q_EMIT progress(action_, prog, (total) ? total : action_.local.size());
+    }
+private:
+    action_t action_;
+};
 
 
 #endif // DAVQT_SYNC_H

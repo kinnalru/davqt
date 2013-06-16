@@ -27,6 +27,8 @@
 
 struct main_window_t::Pimpl {
     Ui_main ui;
+    sync_manager_t* manager;
+    Actions actions;
 };
 
 main_window_t::main_window_t(QWidget* parent)
@@ -35,7 +37,31 @@ main_window_t::main_window_t(QWidget* parent)
 {
     p_->ui.setupUi(this);
     
-    connect(p_->ui.sync, SIGNAL(clicked()), this, SLOT(sync()));
+    const QString localfolder = "/tmp/111";
+    const QString remotefolder = "/1";    
+
+    sync_manager_t::connection conn = {
+        "https",
+        "webdav.yandex.ru",
+        -1,
+        "",
+        ""
+    };
+    
+    p_->manager = new sync_manager_t(0, conn, localfolder, remotefolder);
+
+    Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));         
+    
+    Q_VERIFY(connect(p_->manager, SIGNAL(sync_started()), this, SLOT(sync_started())));            
+    Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));     
+    
+    Q_VERIFY(connect(p_->manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+    Q_VERIFY(connect(p_->manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+    Q_VERIFY(connect(p_->manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
+    Q_VERIFY(connect(p_->manager, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+    
+    Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
+    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked()), this, SLOT(sync())));
 }
 
 main_window_t::~main_window_t() {
@@ -44,33 +70,7 @@ main_window_t::~main_window_t() {
 
 void main_window_t::sync()
 {
-    const QString localfolder = "/tmp/111";
-    const QString remotefolder = "/1";    
-
-    
-    sync_manager_t* manager = new sync_manager_t(0);
-    manager->start_sync(localfolder, remotefolder);
-    
-    Q_VERIFY(connect(manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
-    Q_VERIFY(connect(manager, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-    Q_VERIFY(connect(manager, SIGNAL(sync_started(QList<action_t>)), this, SLOT(sync_started(QList<action_t>))));            
-    Q_VERIFY(connect(manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));            
-    sync_manager_t::pool()->start(manager);
-    
-    Q_VERIFY(::connect(manager, SIGNAL(sync_started(QList<action_t>)), [=] {
-        for (int i = 0; i < sync_manager_t::pool()->maxThreadCount(); ++i) {
-            sync_manager_t* m = new sync_manager_t(0);
-            m->start_part(localfolder, remotefolder);
-            
-            Q_VERIFY(connect(m, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-            Q_VERIFY(connect(m, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-            Q_VERIFY(connect(m, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
-            Q_VERIFY(connect(m, SIGNAL(action_progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-            sync_manager_t::pool()->start(m);
-        }
-    }));
+    p_->manager->sync(p_->actions);
 }
 
 QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
@@ -79,7 +79,7 @@ QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
     return pb;
 }
 
-void main_window_t::sync_started(const QList<action_t>& actions)
+void main_window_t::status_updated(const Actions& actions)
 {
     p_->ui.actions->clear();
     
@@ -109,7 +109,11 @@ void main_window_t::sync_started(const QList<action_t>& actions)
             case action_t::download:        return find(tr("Files to download"));
             case action_t::local_changed:   return find(tr("Upload local changes"));
             case action_t::remote_changed:  return find(tr("Download remote changes"));
-            case action_t::unchanged:   return find(tr("Unchanged"));
+            case action_t::unchanged:   {
+                QTreeWidgetItem* group = find(tr("Unchanged"));
+                group->setExpanded(false);
+                return group;
+            }
             case action_t::conflict:    return find(tr("Conflicts"));
             case action_t::both_deleted:    return find(tr("Deleted"));
             case action_t::local_deleted:   return find(tr("Locally deleted files"));
@@ -128,6 +132,8 @@ void main_window_t::sync_started(const QList<action_t>& actions)
         }
         QTreeWidgetItem* item = new QTreeWidgetItem(group, QStringList() << action.local_file << tr("Not synced"));
     }
+    
+    p_->actions = actions;
 }
 
 
@@ -206,9 +212,15 @@ void main_window_t::action_finished(const action_t& action)
     };    
 }
 
+void main_window_t::sync_started()
+{
+    p_->ui.sync->setEnabled(false);
+    qDebug() << "! =========== started!";
+}
 
 void main_window_t::sync_finished()
 {
+    p_->ui.sync->setEnabled(true);
     qDebug() << "! =========== completed";
 }
 

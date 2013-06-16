@@ -100,6 +100,8 @@ struct action_t {
 };
 
 
+typedef QList<action_t> Actions;
+
 class qt_exception_t : public std::runtime_error
 {
     const QString msg;
