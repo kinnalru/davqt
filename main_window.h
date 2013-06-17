@@ -23,6 +23,7 @@
 
 #include <memory>
 #include <QWidget>
+#include <QSystemTrayIcon>
 
 #include "sync.h"
 
@@ -47,7 +48,8 @@ public Q_SLOTS:
     
     void action_progress(const action_t& action, qint64 progress, qint64 total);        
 
-
+    void tray_activated(QSystemTrayIcon::ActivationReason);
+    void show_preferences();
 private:
     void action_finished(const action_t& action);
 

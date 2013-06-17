@@ -19,6 +19,8 @@
 
 #include <QDebug>
 #include <QProgressBar>
+#include <QSystemTrayIcon>
+#include <QMenu>
 
 #include "tools.h"
 
@@ -62,9 +64,48 @@ main_window_t::main_window_t(QWidget* parent)
     
     Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
     Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked()), this, SLOT(sync())));
+    
+    QSystemTrayIcon* tray = new QSystemTrayIcon(QIcon("icons:sync.png"), this);
+    tray->setVisible(true);
+    
+    QMenu* menu = new QMenu();
+
+    ::connect(menu->addAction(QIcon("icons:prefs.png"), QObject::tr("Preferences")), SIGNAL(triggered(bool)), [] {
+
+    });
+    
+    ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
+        qApp->exit(0);
+    });
+
+
+    tray->setContextMenu(menu);
+    connect(tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
 }
 
 main_window_t::~main_window_t() {
+    
+}
+
+void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
+    if (reason == QSystemTrayIcon::QSystemTrayIcon::Trigger) {
+        //This is very complicated magic... like voodoo!
+        show();
+        Qt::WindowFlags eFlags = windowFlags();
+        eFlags |= Qt::WindowStaysOnTopHint;
+        setWindowFlags(eFlags);
+        show();
+        eFlags &= ~Qt::WindowStaysOnTopHint;
+        setWindowFlags(eFlags);
+
+        show();
+        raise();
+        activateWindow();
+    }
+}
+
+void main_window_t::show_preferences()
+{
     
 }
 

@@ -42,6 +42,7 @@ set(IFACES
 )
 
 set(RESOURCES
+    images.qrc
 )
 
 set(DEPS

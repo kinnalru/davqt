@@ -1,0 +1,9 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file>images/exit.png</file>
+    <file>images/sync.png</file>
+    <file>images/prefs.png</file>
+  </qresource>
+  <qresource prefix="/images">
+  </qresource>
+</RCC>
