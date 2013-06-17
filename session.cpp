@@ -43,6 +43,7 @@
 
 #include "session.h"
 
+#define EUNKNOWN 99999
 
 enum {
     ETAG = 0,
@@ -275,6 +276,18 @@ void session_t::notifier(void* userdata, int status_int, const void* raw_info)
     };
 }
 
+static int http_code(ne_session* session) {
+    const char *p = ne_get_error(session);
+    char *q;
+    int err;
+
+    err = strtol(p, &q, 10);
+    if (p == q) {
+        err = EUNKNOWN;
+    }
+    return err;
+}
+
 struct session_t::Pimpl {
     
     std::shared_ptr<ne_session> session;
@@ -321,7 +334,7 @@ void session_t::open()
     
     if (ret) {
         std::cerr << ne_get_error(p_->session.get()) << std::endl;;
-        throw std::runtime_error(std::string("Can't get server options:") + ne_get_error(p_->session.get()));
+        throw ne_exception_t(http_code(p_->session.get()), QString("Can't get server options:") + ne_get_error(p_->session.get()));
     }
 
 
@@ -345,7 +358,7 @@ std::vector<remote_res_t> session_t::get_resources(const QString& path) {
     ctx.path = path;
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
-        throw std::runtime_error(ne_get_error(p_->session.get()));
+        throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
     
     return ctx.resources;

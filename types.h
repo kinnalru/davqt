@@ -118,4 +118,18 @@ public:
     const QString& message() const {return msg;}
 };
 
+class ne_exception_t : public std::runtime_error
+{
+    const int code_;
+    const QString msg_;
+public:
+    explicit ne_exception_t(int code, const QString& msg)
+        : std::runtime_error(msg.toLocal8Bit().constData())
+        , code_(code), msg_(msg) {}
+        
+    ~ne_exception_t() throw() {};
+
+    const QString& message() const {return msg_;}
+    int code() const {return code_;}
+};
 

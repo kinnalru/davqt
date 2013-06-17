@@ -34,8 +34,18 @@ stat_t& update_head(session_t& session, const QString& remotepath, stat_t& stat)
     return stat;
 }
 
-struct upload_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct upload_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        try {
+            auto resources = session.get_resources(action.remote_file);
+        }
+        catch (ne_exception_t& e) {
+            return e.code() == 404;
+        }
+        return false;         
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         QFile file(action.local.absoluteFilePath());
         
         if (!file.open(QIODevice::ReadOnly)) 
@@ -60,12 +70,16 @@ struct upload_handler {
     }
 };
 
-struct download_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct download_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        return !QFileInfo(action.local_file).exists();
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         const QString tmppath = action.local_file + db_t::tmpprefix;
         
         QFile tmpfile(tmppath);
-        if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate )) 
+        if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
             throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
         
         stat_t stat =  session.get(action.remote.path, tmpfile.handle());
@@ -92,11 +106,15 @@ struct download_handler {
     }
 };
 
-struct conflict_handler {
+struct conflict_handler : base_handler_t {
     action_processor_t::Resolver resolver_;
     conflict_handler(action_processor_t::Resolver r) : resolver_(r) {}
 
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         const QString tmppath = action.local_file + db_t::tmpprefix;
         
         QFile tmpfile(tmppath);
@@ -151,21 +169,45 @@ struct conflict_handler {
     }
 };
 
-struct both_deleted_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct both_deleted_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        try {
+            auto resources = session.get_resources(action.remote_file);
+        }
+        catch (ne_exception_t& e) {
+            return e.code() == 404 && !QFileInfo(action.local_file).exists();
+        }
+        return false;        
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         db.remove(action.local_file);
     }
 };
 
-struct local_deleted_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct local_deleted_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         session.remove(action.remote.path);
         db.remove(action.local_file);
     }
 };
 
-struct remote_deleted_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct remote_deleted_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        try {
+            auto resources = session.get_resources(action.remote_file);
+        }
+        catch (ne_exception_t& e) {
+            return e.code() == 404;
+        }
+        return false;        
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         if (!QFile::remove(action.local_file))
             throw qt_exception_t(QString("Can't remove file %1").arg(action.local.absoluteFilePath()));
         
@@ -173,8 +215,12 @@ struct remote_deleted_handler {
     }
 };
 
-struct upload_dir_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct upload_dir_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         
         session.mkcol(action.remote_file);
         
@@ -203,8 +249,12 @@ struct upload_dir_handler {
     }
 };
 
-struct download_dir_handler {
-    void operator() (session_t& session, db_t& db, const action_t& action) const {
+struct download_dir_handler : base_handler_t {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }
+    
+    void do_request(session_t& session, db_t& db, const action_t& action) const {
         
         if (!QDir().mkdir(action.local_file))
             throw qt_exception_t(QString("Can't create dir: %1").arg(action.local_file));

@@ -6,6 +6,20 @@
 #include "sync.h"
 #include "database.h"
 
+struct base_handler_t {
+    virtual bool do_check(session_t& session, const action_t& action) const = 0;
+    virtual void do_request(session_t& session, db_t& db, const action_t& action) const = 0;
+    
+    inline void operator() (session_t& session, db_t& db, const action_t& action) const {
+        if (do_check(session, action)) {
+            do_request(session, db, action);
+        } 
+        else {
+            throw qt_exception_t(QObject::tr("Action state error"));
+        }
+    }
+};
+
 class action_processor_t {
 public:
     struct resolve_ctx {
