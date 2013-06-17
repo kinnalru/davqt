@@ -97,7 +97,24 @@ db_entry_t& db_t::entry(const QString& absolutefilepath)
 
 db_entry_t db_t::get_entry(const QString& absolutefilepath) const
 {
-    return const_cast<db_t*>(this)->entry(absolutefilepath);
+    QMutexLocker l(&mx_);
+    const QString folder = dbfolder(absolutefilepath);
+    const QString file = dbfile(absolutefilepath);
+
+    auto fit = db_.find(folder);
+    if (fit != db_.end()) {
+        auto it = fit->second.find(file);
+        if (it != fit->second.end()) {
+            return it->second;
+        }
+    }
+    
+    return db_entry_t(
+        localroot_.absolutePath(),
+        folder,
+        file,
+        QString(), 0, 0, -1, false
+    );
 }
 
 

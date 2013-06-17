@@ -19,14 +19,16 @@ struct stat_t {
     
     time_t local_mtime;
     time_t remote_mtime;
-    off_t size;
+
     QFile::Permissions perms;
+    
+    off_t size;
 };
 
 /// describes last synx state of local and remote file
 struct db_entry_t {
     
- db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s, bool d)
+    db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s, bool d)
         : root(r), folder(f), name(n), stat(e, lt, rt, s), dir(d) {}
     
     db_entry_t() : dir(false) {}

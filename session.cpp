@@ -174,15 +174,10 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
 {
     request_ctx_t* ctx = reinterpret_cast<request_ctx_t*>(userdata);
 
-    std::cerr << "cr0" << std::endl;
-    
     assert(ctx);
     assert(uri);
     assert(set);
     
-    //FIXME check
-    //if (!res || !uri || !uri->path || !set) return;
-
     remote_res_t resource;
     
     resource.path = ne_path_unescape(uri->path);
@@ -336,15 +331,6 @@ void session_t::open()
         std::cerr << ne_get_error(p_->session.get()) << std::endl;;
         throw ne_exception_t(http_code(p_->session.get()), QString("Can't get server options:") + ne_get_error(p_->session.get()));
     }
-
-
-    if (caps.dav_class1 ) {
-        std::cerr << "class 1" << std::endl;
-    }
-
-    if (caps.dav_class2 ) {
-        std::cerr << "class 2" << std::endl;
-    }
 }
 
 std::vector<remote_res_t> session_t::get_resources(const QString& path) {
@@ -442,7 +428,7 @@ void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime
     }    
 }
 
-void session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems)
+stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);    
     const std::string value = boost::lexical_cast<std::string>(prems);
@@ -455,13 +441,23 @@ void session_t::set_permissions(const QString& unescaped_path, QFile::Permission
         },
         NULL
     };
+    
+    stat_t data;    
 
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    ne_hook_post_send(p_->session.get(), post_send_handler, &data);
+    
     int neon_stat = ne_proppatch(p_->session.get(), path.get(), ops);
+    
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
     
     if (neon_stat != NE_OK) {
         std::cerr << "error when ne_proppatch:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
+
+    return data;
 }
 
 stat_t session_t::get(const QString& unescaped_path, int fd)

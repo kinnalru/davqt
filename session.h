@@ -49,7 +49,7 @@ public:
 
     void head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length);
 
-    void set_permissions(const QString& unescaped_path, QFile::Permissions prems);
+    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems);
     
     void remove(const QString& unescaped_path);
 
