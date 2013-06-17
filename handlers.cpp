@@ -108,7 +108,9 @@ struct download_handler : base_handler_t {
 
 struct conflict_handler : base_handler_t {
     action_processor_t::Resolver resolver_;
-    conflict_handler(action_processor_t::Resolver r) : resolver_(r) {}
+    action_processor_t::Comparer comparer_;
+    
+    conflict_handler(action_processor_t::Comparer c, action_processor_t::Resolver r) : comparer_(c), resolver_(r) {}
 
     bool do_check(session_t& session, const action_t& action) const {
         return true;
@@ -129,8 +131,14 @@ struct conflict_handler : base_handler_t {
         if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
             stat = update_head(session, action.remote.path, stat);
         }
+
+        action_processor_t::resolve_ctx ctx = {
+            action,
+            action.local_file,
+            tmppath                    
+        };
         
-        if (!QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))) {
+        if (comparer_(ctx)) {
             qDebug() << "files are same!";
             stat.local_mtime = action.local.lastModified().toTime_t();
             stat.size = action.local.size();
@@ -143,11 +151,6 @@ struct conflict_handler : base_handler_t {
             db.save(e.folder + "/" + e.name, e);                       
         } 
         else {
-            action_processor_t::resolve_ctx ctx = {
-                action,
-                action.local_file,
-                tmppath                    
-            };
             qDebug() << "files are differs : stat resolving...";
             if (resolver_(ctx)) {
                 qDebug() << "Conflict resolved: result = " << ctx.result;
@@ -284,7 +287,7 @@ struct download_dir_handler : base_handler_t {
     }
 };
 
-action_processor_t::action_processor_t(session_t& session, db_t& db, Resolver resolver)
+action_processor_t::action_processor_t(session_t& session, db_t& db, Comparer comparer, Resolver resolver)
     : session_(session)
     , db_(db)
 {
@@ -293,7 +296,7 @@ action_processor_t::action_processor_t(session_t& session, db_t& db, Resolver re
         {action_t::download, download_handler()},
         {action_t::local_changed, upload_handler()},    //FIXME check remote etag NOT changed
         {action_t::remote_changed, download_handler()},
-        {action_t::conflict, conflict_handler(resolver)},
+        {action_t::conflict, conflict_handler(comparer, resolver)},
         {action_t::both_deleted, both_deleted_handler()},
         {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
         {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed

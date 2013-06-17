@@ -26,8 +26,8 @@ struct stat_t {
 /// describes last synx state of local and remote file
 struct db_entry_t {
     
- db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s)
-        : root(r), folder(f), name(n), stat(e, lt, rt, s) {}
+ db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s, bool d)
+        : root(r), folder(f), name(n), stat(e, lt, rt, s), dir(d) {}
     
     db_entry_t() {}
     
@@ -38,6 +38,7 @@ struct db_entry_t {
     QString name;
     
     stat_t stat;
+    bool dir;
 };
 
 /// describes state of local resource

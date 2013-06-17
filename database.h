@@ -28,6 +28,7 @@ struct db_t {
     db_entry_t get_entry(const QString& absolutefilepath) const;
     
     QStringList entries(QString folder) const;
+    QStringList folders(QString folder) const;
     
 private:
     QString dbfolder(const QString& absolutefilepath) const;

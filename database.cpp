@@ -9,6 +9,7 @@ const QString local_mtime_c = "local_mtime";
 const QString remote_mtime_c = "remote_mtime";
 const QString size_c = "size";
 const QString perms_c = "permissions";
+const QString folder_c = "folder";
 
 const QString db_t::prefix = ".davqt";
 const QString db_t::tmpprefix = ".davtmp";
@@ -43,7 +44,8 @@ db_t::db_t(const QString& dbpath, const QString& localroot)
                 s->value(etag_c).toString(),
                 s->value(local_mtime_c).toLongLong(),
                 s->value(remote_mtime_c).toLongLong(),
-                s->value(size_c).toULongLong()
+                s->value(size_c).toULongLong(),
+                s->value(folder_c).toBool()
             );
             dbfolder[file].stat.perms = QFile::Permissions(s->value(perms_c).toInt());
         }
@@ -126,6 +128,7 @@ void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
     s->setValue(remote_mtime_c, qlonglong(sv.stat.remote_mtime));
     s->setValue(size_c, qulonglong(sv.stat.size));
     s->setValue(perms_c, static_cast<int>(sv.stat.perms));
+    s->setValue(folder_c, sv.dir);    
 }
 
 void db_t::remove(const QString& absolutefilepath)
@@ -155,8 +158,37 @@ QStringList db_t::entries(QString folder) const
     else
         folder = localroot_.relativeFilePath(folder);
 
+    QStringList items;
     auto it = db_.find(folder);
-    return (it == db_.end())
-        ? QStringList()
-        : QMap<QString, db_entry_t>(it->second).keys();
+    if (it == db_.end()) {
+        return QStringList();
+    }
+    else {
+        Q_FOREACH(auto& p, it->second) {
+            if (p.second.dir) continue;
+            items << p.first;
+        }
+    }
 }
+
+QStringList db_t::folders(QString folder) const
+{
+    QMutexLocker l(&mx_);      
+    if (localroot_.absolutePath() == folder)
+        folder = ".";
+    else
+        folder = localroot_.relativeFilePath(folder);
+
+    QStringList items;
+    auto it = db_.find(folder);
+    if (it == db_.end()) {
+        return QStringList();
+    }
+    else {
+        Q_FOREACH(auto& p, it->second) {
+            if (!p.second.dir) continue;
+            items << p.first;
+        }
+    }
+}
+

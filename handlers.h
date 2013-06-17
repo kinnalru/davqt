@@ -28,9 +28,11 @@ public:
         QString remote_new;
         QString result;
     };
+
+    typedef std::function<bool (resolve_ctx&)> Comparer; //used to compare files for equality    
+    typedef std::function<bool (resolve_ctx&)> Resolver; //used to merge conflict files
     
-    typedef std::function<bool (resolve_ctx&)> Resolver;
-    action_processor_t(session_t& session, db_t& db, Resolver resolver);
+    action_processor_t(session_t& session, db_t& db, Comparer comparer, Resolver resolver);
     
     bool process(const action_t& action);
 
