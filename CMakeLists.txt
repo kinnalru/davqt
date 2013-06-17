@@ -14,6 +14,8 @@ include_directories(${Boost_INCLUDE_DIRS})
 find_package(Qt4 REQUIRED QtCore QtNetwork QtGui)
 include(${QT_USE_FILE})
 
+add_subdirectory(3rdparty/preferences)
+
 set(HEADERS
     database.h
     handlers.h
