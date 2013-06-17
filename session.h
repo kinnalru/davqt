@@ -53,7 +53,7 @@ public:
     
     void remove(const QString& unescaped_path);
 
-    void mkcol(const QString& unescaped_path);
+    stat_t mkcol(const QString& unescaped_path);
    
 Q_SIGNALS:
     void connected();

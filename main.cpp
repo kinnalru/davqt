@@ -22,7 +22,7 @@ int main(int argc, char** argv)
         QDir::addSearchPath("icons", QString(":icons/images/"));
         QDir::addSearchPath("images", QString(":icons/images/"));
 
-        QApplication::setQuitOnLastWindowClosed(false);
+//         QApplication::setQuitOnLastWindowClosed(false);
 
         
         main_window_t m;

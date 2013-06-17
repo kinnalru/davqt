@@ -29,7 +29,7 @@ struct db_entry_t {
  db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s, bool d)
         : root(r), folder(f), name(n), stat(e, lt, rt, s), dir(d) {}
     
-    db_entry_t() {}
+    db_entry_t() : dir(false) {}
     
     bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && stat.empty();}
     

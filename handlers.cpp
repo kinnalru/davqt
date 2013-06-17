@@ -70,6 +70,12 @@ struct upload_handler : base_handler_t {
     }
 };
 
+struct local_change_handler : upload_handler {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }    
+};
+
 struct download_handler : base_handler_t {
     bool do_check(session_t& session, const action_t& action) const {
         return !QFileInfo(action.local_file).exists();
@@ -83,7 +89,7 @@ struct download_handler : base_handler_t {
             throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
         
         stat_t stat =  session.get(action.remote.path, tmpfile.handle());
-        stat.perms = action.remote.perms;
+        stat.perms = (action.remote.perms) ? action.remote.perms : tmpfile.permissions();
         tmpfile.setPermissions(stat.perms);
 
         const QFileInfo info(tmpfile);
@@ -104,6 +110,12 @@ struct download_handler : base_handler_t {
         e.stat = stat;
         db.save(e.folder + "/" + e.name, e);
     }
+};
+
+struct remote_change_handler : download_handler {
+    bool do_check(session_t& session, const action_t& action) const {
+        return true;
+    }    
 };
 
 struct conflict_handler : base_handler_t {
@@ -225,14 +237,30 @@ struct upload_dir_handler : base_handler_t {
     
     void do_request(session_t& session, db_t& db, const action_t& action) const {
         
-        session.mkcol(action.remote_file);
+        stat_t stat = session.mkcol(action.remote_file);
+        stat.perms = action.local.permissions();
+        
+        session.set_permissions(action.remote_file, stat.perms);
+        
+        stat.size = action.local.size();
+        stat.local_mtime = action.local.lastModified().toTime_t();
+        
+        if (stat.etag.isEmpty() || stat.remote_mtime == 0) {
+            stat = update_head(session, action.remote_file, stat);
+        }
+
+        db_entry_t e = action.dbentry;
+        
+        e.dir = true;
+        e.stat = stat;
+        db.save(e.folder + "/" + e.name, e);        
         
         Q_FOREACH(const QFileInfo& info, QDir(action.local.absoluteFilePath()).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
             if (db_t::skip(info.fileName())) continue;
 
             action_t act(
                 action_t::error,
-                db_entry_t(),
+                db.get_entry(info.absoluteFilePath()),
                 info.absoluteFilePath(),
                 action.remote_file + "/" + info.fileName(),
                 info,
@@ -245,7 +273,6 @@ struct upload_dir_handler : base_handler_t {
             }
             else {
                 act.type = action_t::upload;
-                act.dbentry = db.get_entry(info.absoluteFilePath());
                 upload_handler()(session, db, act);
             }
         }
@@ -294,8 +321,8 @@ action_processor_t::action_processor_t(session_t& session, db_t& db, Comparer co
     handlers_ = {
         {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
         {action_t::download, download_handler()},
-        {action_t::local_changed, upload_handler()},    //FIXME check remote etag NOT changed
-        {action_t::remote_changed, download_handler()},
+        {action_t::local_changed, local_change_handler()},    //FIXME check remote etag NOT changed
+        {action_t::remote_changed, remote_change_handler()},
         {action_t::conflict, conflict_handler(comparer, resolver)},
         {action_t::both_deleted, both_deleted_handler()},
         {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed

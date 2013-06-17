@@ -219,8 +219,10 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
         const QString remotefile = remotefolder + "/" + file;
         qDebug() << "unhandler remote file:" << file << " must be downloaded";
         
-        auto resource = find_resource(snap.remote_cache, file);                      
+        auto resource = find_resource(snap.remote_cache, file);           
+        qDebug() << "1";
         Q_ASSERT(resource != snap.remote_cache.end());          
+        qDebug() << "2";
         actions.push_back(action_t(action_t::download,
             localdb.get_entry(localfile),
             localfile,
@@ -389,6 +391,7 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
     QList<action_t> actions;
     
     {
+        qDebug() << "scan1";
         // Step 1 - making snapshot in filenames of local/remote 'filesystem'
         const snapshot_data filesnap(
             remote_cache,
@@ -398,11 +401,14 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
             remoteNames(remote_cache, files)
         );
 
+        qDebug() << "scan2";
         actions << handle_files(localdb, localfolder, remotefolder, filesnap);
+        qDebug() << "scan3";
     }
     
      
     {
+        qDebug() << "scan4";
         // Step 2 - making snapshot in directories of local/remote 'filesystem'
         const snapshot_data dirsnap(
             remote_cache,
@@ -412,6 +418,7 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
             remoteNames(remote_cache, folders)
         );
         
+        qDebug() << "scan5";
         actions << handle_dirs(localdb, session, localfolder, remotefolder, dirsnap);    
     }
     
@@ -481,7 +488,9 @@ void sync_manager_t::update_status()
             session.set_ssl();
             session.open();
             
+            qDebug() << "update1";
             const QList<action_t> actions = scan_and_compare(localdb_, session, lf_, rf_);    
+            qDebug() << "update2";
             Q_EMIT status_updated(actions);
         } 
         catch (const std::exception& e) {
@@ -568,7 +577,7 @@ void sync_manager_t::sync(const Actions& act)
         pool()->waitForDone();        
         Q_EMIT sync_finished();
         controler->quit();
-        controler->deleteLater();
+//         controler->deleteLater();
     });
     controler->start();
 

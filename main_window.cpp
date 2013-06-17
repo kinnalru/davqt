@@ -153,8 +153,8 @@ void main_window_t::status_updated(const Actions& actions)
             case action_t::unchanged:       return find(tr("Unchanged"));
             case action_t::conflict:        return find(tr("Conflicts"));
             case action_t::both_deleted:    return find(tr("Deleted"));
-            case action_t::local_deleted:   return find(tr("Locally deleted files"));
-            case action_t::remote_deleted:  return find(tr("Remotely deleted files"));
+            case action_t::local_deleted:   return find(tr("Locally deleted"));
+            case action_t::remote_deleted:  return find(tr("Remotely deleted"));
             case action_t::upload_dir:      return find(tr("Folders to upload"));
             case action_t::download_dir:    return find(tr("Folders to download"));
             default: Q_ASSERT(!"unhandled action type");

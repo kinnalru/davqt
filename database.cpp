@@ -169,6 +169,7 @@ QStringList db_t::entries(QString folder) const
             items << p.first;
         }
     }
+    return items;
 }
 
 QStringList db_t::folders(QString folder) const
@@ -190,5 +191,6 @@ QStringList db_t::folders(QString folder) const
             items << p.first;
         }
     }
+    return items;
 }
 

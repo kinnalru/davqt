@@ -514,7 +514,7 @@ void session_t::remove(const QString& unescaped_path)
     }
 }
 
-void session_t::mkcol(const QString& raw)
+stat_t session_t::mkcol(const QString& raw)
 {
     QString unescaped_path = raw;
     if (!unescaped_path.isEmpty() && unescaped_path.right(1) != "/") {
@@ -523,12 +523,21 @@ void session_t::mkcol(const QString& raw)
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
+    stat_t data;
+    
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    ne_hook_post_send(p_->session.get(), post_send_handler, &data);    
+    
     int neon_stat = ne_mkcol(p_->session.get(), path.get());
+    
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
     
     if (neon_stat != NE_OK) {
         std::cerr << "error when mkcol:" << neon_stat << " " << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }    
+    return data;
 }
 
 
