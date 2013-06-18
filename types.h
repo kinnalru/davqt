@@ -6,42 +6,8 @@
 
 #include <QString>
 #include <QFileInfo>
-
-struct stat_t {
-    stat_t(const QString& e, time_t lt, time_t rt, off_t s)
-        : etag(e), local_mtime(lt), remote_mtime(rt), size(s) {}
-    
-    stat_t() : local_mtime(0), remote_mtime(0), size(-1) {}
-    
-    bool empty() const {return local_mtime == 0 && remote_mtime == 0 && size == -1;}
-    
-    QString etag;
-    
-    time_t local_mtime;
-    time_t remote_mtime;
-
-    QFile::Permissions perms;
-    
-    off_t size;
-};
-
-/// describes last synx state of local and remote file
-struct db_entry_t {
-    
-    db_entry_t(const QString& r, const QString& f, const QString& n, const QString& e, time_t lt, time_t rt, off_t s, bool d)
-        : root(r), folder(f), name(n), stat(e, lt, rt, s), dir(d) {}
-    
-    db_entry_t() : dir(false) {}
-    
-    bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && stat.empty();}
-    
-    QString root;
-    QString folder;
-    QString name;
-    
-    stat_t stat;
-    bool dir;
-};
+#include <QDateTime>
+#include <QVariant>
 
 /// describes state of local resource
 typedef QFileInfo local_res_t;
@@ -56,7 +22,7 @@ struct remote_res_t {
                            but without the mark for weak etags. */
     bool dir;
                            
-    off_t size;         /* File size in bytes (regular files only). */
+    qint64 size;         /* File size in bytes (regular files only). */
     time_t ctime;       /* Creation date. */
     time_t mtime;       /* Date of last modification. */
 
@@ -69,6 +35,66 @@ struct remote_res_t {
     } exec;
     
     inline bool empty() const {return path.isEmpty() && name.isEmpty();}
+};
+
+struct stat_t {
+    stat_t(const QString& e, const QString& ap, qlonglong m, QFile::Permissions p, quint64 s)
+        : etag(e), absolutepath(ap), mtime(m), perms(p), size(s) {}
+    
+    stat_t() : mtime(0), size(-1), perms(0) {}
+    
+    stat_t(const local_res_t& info) : absolutepath(info.absoluteFilePath())
+        , mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
+        
+    stat_t(const remote_res_t& info) : etag(info.etag), absolutepath(info.path)
+        , mtime(info.mtime), perms(info.perms), size(info.size) {}
+    
+    stat_t(const QVariantMap& data) {
+        etag = data["etag"].toString();
+        absolutepath = data["absolutepath"].toString();
+        mtime = data["mtime"].toLongLong();
+        perms = QFile::Permissions(data["perms"].toInt());
+        size = data["size"].toULongLong();
+    }
+    
+    bool empty() const {return mtime == 0 && size == -1 && absolutepath.isEmpty();}
+    
+    inline QVariantMap dump() const {
+        QVariantMap data;
+        data["etag"] = etag;
+        data["absolutepath"] = absolutepath;
+        data["mtime"] = mtime;
+        data["perms"] = static_cast<int>(perms);
+        data["size"] = size;
+        return data;
+    }
+    
+    QString etag;
+    QString absolutepath;
+    
+    qlonglong mtime;
+    QFile::Permissions perms;
+    quint64 size;
+};
+
+/// describes last synx state of local and remote file
+struct db_entry_t {
+    
+    db_entry_t(const QString& r, const QString& f, const QString& n, const stat_t& ls, const stat_t& rs, bool d)
+        : root(r), folder(f), name(n), local(ls), remote(rs), dir(d) {}
+    
+    db_entry_t() : dir(false) {}
+    
+    bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && local.empty() && remote.empty();}
+    
+    QString root;
+    QString folder;
+    QString name;
+    
+    stat_t local;    
+    stat_t remote;
+    
+    bool dir;
 };
 
 /// describes action needed to perform
@@ -90,19 +116,17 @@ struct action_t {
         download_dir  = 1 << 10,
     } type;
     
-    action_t(type_e t, const db_entry_t& e, const QString& lf, const QString& rf, const local_res_t& l, const remote_res_t& r)
-        : type(t), dbentry(e), local_file(lf), remote_file(rf), local(l), remote(r)
+    action_t(type_e t, const QString& lf, const QString& rf, const stat_t& l, const stat_t& r)
+        : type(t), local_file(lf), remote_file(rf), local(l), remote(r)
     {}
 
     action_t() {}
     
-    db_entry_t dbentry;
-    
     QString local_file;
     QString remote_file;
     
-    local_res_t local;
-    remote_res_t remote;
+    stat_t local;
+    stat_t remote;
 };
 
 

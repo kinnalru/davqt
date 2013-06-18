@@ -47,7 +47,7 @@ public:
     stat_t get(const QString& unescaped_path, int fd);
     stat_t put(const QString& unescaped_path, int fd);
 
-    void head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length);
+    void head(const QString& unescaped_path, QString& etag, qlonglong& mtime, quint64& length);
 
     stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems);
     

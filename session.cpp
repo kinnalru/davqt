@@ -371,9 +371,9 @@ int post_send_handler(ne_request *req, void *userdata, const ne_status *status) 
     if (!value) value = ne_get_response_header(req, "Date");
 
     if (value) {
-        data->remote_mtime = ne_httpdate_parse(value);
+        data->mtime = ne_httpdate_parse(value);
     } else {
-        data->remote_mtime = 0;
+        data->mtime = 0;
     }
     
     return NE_OK;
@@ -389,7 +389,7 @@ void pre_send_handler(ne_request *req, void *userdata, ne_buffer *header) {
 //     std::cerr << "here:" << header->data << std::endl;
 }
 
-void session_t::head(const QString& unescaped_path, QString& etag, time_t& mtime, off_t& length)
+void session_t::head(const QString& unescaped_path, QString& etag, qlonglong& mtime, quint64& length)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     

@@ -4,11 +4,8 @@
 #include "database.h"
 
 
-const QString etag_c = "etag";
-const QString local_mtime_c = "local_mtime";
-const QString remote_mtime_c = "remote_mtime";
-const QString size_c = "size";
-const QString perms_c = "permissions";
+const QString local_c = "local";
+const QString remote_c = "remote";
 const QString folder_c = "folder";
 
 const QString db_t::prefix = ".davqt";
@@ -41,13 +38,10 @@ db_t::db_t(const QString& dbpath, const QString& localroot)
                 localroot_.absolutePath(),
                 folder,
                 file,
-                s->value(etag_c).toString(),
-                s->value(local_mtime_c).toLongLong(),
-                s->value(remote_mtime_c).toLongLong(),
-                s->value(size_c).toULongLong(),
+                stat_t(s->value(local_c).toMap()),
+                stat_t(s->value(remote_c).toMap()),
                 s->value(folder_c).toBool()
             );
-            dbfolder[file].stat.perms = QFile::Permissions(s->value(perms_c).toInt());
         }
     }
 }
@@ -113,7 +107,9 @@ db_entry_t db_t::get_entry(const QString& absolutefilepath) const
         localroot_.absolutePath(),
         folder,
         file,
-        QString(), 0, 0, -1, false
+        stat_t(QString(), absolutefilepath, 0, 0, -1),
+        stat_t(QString(), QString(), 0, 0, -1),
+        false
     );
 }
 
@@ -140,11 +136,8 @@ void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
     group_h g1(*s, escaped_folder);
     group_h g2(*s, sv.name);
 
-    s->setValue(etag_c, sv.stat.etag);
-    s->setValue(local_mtime_c, qlonglong(sv.stat.local_mtime));
-    s->setValue(remote_mtime_c, qlonglong(sv.stat.remote_mtime));
-    s->setValue(size_c, qulonglong(sv.stat.size));
-    s->setValue(perms_c, static_cast<int>(sv.stat.perms));
+    s->setValue(local_c,  sv.local.dump());
+    s->setValue(remote_c, sv.remote.dump());
     s->setValue(folder_c, sv.dir);    
 }
 

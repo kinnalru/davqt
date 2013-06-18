@@ -36,39 +36,40 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
     qDebug() << "comparing :" << local.absoluteFilePath() << " <-> " << remote.path;
     action_t::TypeMask mask = 0;
     
-    if (QDateTime::fromTime_t(dbentry.stat.local_mtime) != local.lastModified()) {
+    if (QDateTime::fromTime_t(dbentry.local.mtime) != local.lastModified()) {
         mask |= action_t::local_changed;
-        qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dbentry.stat.local_mtime) << " -> " << local.lastModified();
+        qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dbentry.local.mtime) << " -> " << local.lastModified();
     }
     
-    if (dbentry.stat.size != local.size()) {
+    if (dbentry.local.size != local.size()) {
         mask |= action_t::local_changed;
-        qDebug() << " -> local size changed:" << dbentry.stat.size << " -> " << local.size();
+        qDebug() << " -> local size changed:" << dbentry.local.size << " -> " << local.size();
     }
     
-    if (dbentry.stat.perms != local.permissions()) {
+    if (dbentry.local.perms != local.permissions()) {
         mask |= action_t::local_changed;
-        qDebug() << " -> local permissions changed:" << dbentry.stat.perms << " -> " << local.permissions();
+        qDebug() << " -> local permissions changed:" << dbentry.local.perms << " -> " << local.permissions();
     }
     
-    if (QDateTime::fromTime_t(dbentry.stat.remote_mtime) != QDateTime::fromTime_t(remote.mtime)) {
+    
+    if (QDateTime::fromTime_t(dbentry.remote.mtime) != QDateTime::fromTime_t(remote.mtime)) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.stat.remote_mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
+        qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(dbentry.remote.mtime) << " -> " << QDateTime::fromTime_t(remote.mtime);
     }
     
-    if (dbentry.stat.size != remote.size) {
+    if (dbentry.remote.size != remote.size) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> remote size changed:" << dbentry.stat.size << " -> " << remote.size;
+        qDebug() << " -> remote size changed:" << dbentry.remote.size << " -> " << remote.size;
     }
     
-    if (dbentry.stat.perms != remote.perms) {
+    if (dbentry.remote.perms != remote.perms) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> remote permissions changed:" << dbentry.stat.perms << " -> " << remote.perms;
+        qDebug() << " -> remote permissions changed:" << dbentry.remote.perms << " -> " << remote.perms;
     }
     
-    if (dbentry.stat.etag != remote.etag) {
+    if (dbentry.remote.etag != remote.etag) {
         mask |= action_t::remote_changed;
-        qDebug() << " -> etag changed:" << dbentry.stat.etag << " -> " << remote.etag;
+        qDebug() << " -> etag changed:" << dbentry.remote.etag << " -> " << remote.etag;
     }
     
     if (mask == action_t::local_changed) return action_t::local_changed;
@@ -135,11 +136,10 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
             auto fileinfo = find_info(snap.local_cache, file);
             Q_ASSERT(fileinfo != snap.local_cache.end());
             actions.push_back(action_t(action_t::upload,
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
-                remote_res_t()));
+                stat_t()));
         }
         else {
             qDebug() << "added file " << file << " already exists on server - must be compared";
@@ -148,11 +148,10 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
             Q_ASSERT(fileinfo != snap.local_cache.end());
             Q_ASSERT(resource != snap.remote_cache.end());
             actions.push_back(action_t(compare(localdb.get_entry(localfile), *fileinfo, *resource),
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
-                *resource));
+                stat_t(*resource)));
         }
     }
 
@@ -163,21 +162,19 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
         if (!snap.remote_entries.contains(file)) {
             qDebug() << "file " << file << " deleted and ON server too";
             actions.push_back(action_t(action_t::both_deleted,
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
-                QFileInfo(),
-                remote_res_t()));
+                stat_t(),
+                stat_t()));
         }
         else {
             qDebug() << "file " << file << " localy deleted must be compared with etag on server";
             auto resource = find_resource(snap.remote_cache, file);          
             Q_ASSERT(resource != snap.remote_cache.end());            
             actions.push_back(action_t(action_t::local_deleted,
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
-                QFileInfo(),
+                stat_t(),
                 *resource));            
         }
     }
@@ -191,11 +188,10 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
             Q_ASSERT(fileinfo != snap.local_cache.end());            
             qDebug() << "file " << file << " deleted on server must be deleted localy";
             actions.push_back(action_t(action_t::remote_deleted,
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
-                remote_res_t()));            
+                stat_t()));            
         }
         else {
             qDebug() << "file " << file << " exists on server must be compared";
@@ -204,13 +200,10 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
             Q_ASSERT(fileinfo != snap.local_cache.end());   
             Q_ASSERT(resource != snap.remote_cache.end());     
             actions.push_back(action_t(compare(localdb.get_entry(localfile), *fileinfo, *resource),
-                localdb.get_entry(localfile),
                 localfile,
                 remotefile,
                 *fileinfo,
                 *resource));  
-            
-            qDebug() << "type:" << actions.back().type;
         } 
     }
 
@@ -220,14 +213,11 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
         qDebug() << "unhandler remote file:" << file << " must be downloaded";
         
         auto resource = find_resource(snap.remote_cache, file);           
-        qDebug() << "1";
         Q_ASSERT(resource != snap.remote_cache.end());          
-        qDebug() << "2";
         actions.push_back(action_t(action_t::download,
-            localdb.get_entry(localfile),
             localfile,
             remotefile,
-            QFileInfo(),
+            stat_t(),
             *resource));          
     }
     
@@ -246,11 +236,10 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
             auto fileinfo = find_info(snap.local_cache, file);
             Q_ASSERT(fileinfo != snap.local_cache.end());
             actions.push_back(action_t(action_t::upload_dir,
-                localdb.get_entry(localdir),
                 localdir,
                 remotedir,
                 *fileinfo,
-                remote_res_t()));
+                stat_t()));
         }
         else {
             qDebug() << "dir " << file << " already exists on server - normal recursion";
@@ -259,7 +248,6 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
             } catch(const std::exception& e) {
                 qCritical() << "ERROR: Can't handle internal dir:" << e.what();
                 actions.push_back(action_t(action_t::error,
-                    db_entry_t(),
                     localdir,
                     remotedir,
                     *find_info(snap.local_cache, file),
@@ -275,21 +263,19 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
         if (!snap.remote_entries.contains(file)) {
             qDebug() << "dir " << file << " deleted and ON server too";
             actions.push_back(action_t(action_t::both_deleted,
-                localdb.get_entry(localdir),
                 localdir,
                 remotedir,
-                QFileInfo(),
-                remote_res_t()));
+                stat_t(),
+                stat_t()));
         }
         else {
             qDebug() << "dir " << file << " localy deleted must be compared with etag on server";
             auto resource = find_resource(snap.remote_cache, file);          
             Q_ASSERT(resource != snap.remote_cache.end());            
             actions.push_back(action_t(action_t::local_deleted,
-                localdb.get_entry(localdir),
                 localdir,
                 remotedir,
-                QFileInfo(),
+                stat_t(),
                 *resource));            
         }
     }
@@ -303,11 +289,10 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
             Q_ASSERT(fileinfo != snap.local_cache.end());            
             qDebug() << "dir " << file << " deleted on server must be deleted localy";
             actions.push_back(action_t(action_t::remote_deleted,
-                localdb.get_entry(localdir),
                 localdir,
                 remotedir,
                 *fileinfo,
-                remote_res_t()));            
+                stat_t()));            
         }
         else {
             qDebug() << "dir " << file << " just exists on server - normal recursion";
@@ -316,7 +301,6 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
             } catch(const std::exception& e) {
                 qCritical() << "ERROR: Can't handle internal dir:" << e.what();
                 actions.push_back(action_t(action_t::error,
-                    db_entry_t(),
                     localdir,
                     remotedir,
                     *find_info(snap.local_cache, file),
@@ -333,10 +317,9 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
         auto resource = find_resource(snap.remote_cache, file);                      
         Q_ASSERT(resource != snap.remote_cache.end());          
         actions.push_back(action_t(action_t::download_dir,
-            localdb.get_entry(localdir),
             localdir,
             remotedir,
-            QFileInfo(),
+            stat_t(),
             *resource));          
     }
     

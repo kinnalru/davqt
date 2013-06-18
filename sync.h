@@ -84,7 +84,7 @@ Q_SIGNALS:
     
 public Q_SLOTS:
     void int_progress(qint64 prog, qint64 total) {
-        Q_EMIT progress(action_, prog, (total) ? total : action_.local.size());
+        Q_EMIT progress(action_, prog, (total) ? total : action_.local.size);
     }
 private:
     action_t action_;
