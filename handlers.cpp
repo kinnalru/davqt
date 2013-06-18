@@ -257,10 +257,37 @@ struct remote_deleted_handler : base_handler_t {
         }
         throw std::runtime_error("Can't delete remote: file exists on server!");      
     }
+
+    bool remove_dir(const QString & absolutepath) const
+    {
+        bool result;
+        QDir dir(absolutepath);
+
+        Q_FOREACH(QFileInfo info, dir.entryInfoList(QDir::NoDotAndDotDot | QDir::System | QDir::Hidden  | QDir::AllDirs | QDir::Files, QDir::DirsFirst)) {
+            if (info.isDir()) {
+                result = remove_dir(info.absoluteFilePath());
+            }
+            else {
+                result = dir.remove(info.absoluteFilePath());
+            }
+
+            if (!result) {
+                return result;
+            }
+        }
+        return dir.rmdir(absolutepath);
+    }
     
     void do_request(session_t& session, db_t& db, const action_t& action) const {
-        if (!QFile::remove(action.local.absolutepath))
-            throw qt_exception_t(QString("Can't remove file %1").arg(action.local.absolutepath));
+        
+        if (QFileInfo(action.local.absolutepath).isDir()) {
+            if (!remove_dir(action.local.absolutepath))
+                throw qt_exception_t(QString("Can't remove dir %1").arg(action.local.absolutepath));
+        }
+        else {
+            if (!QFile::remove(action.local.absolutepath))
+                throw qt_exception_t(QString("Can't remove file %1").arg(action.local.absolutepath));
+        }
         
         db.remove(action.local.absolutepath);
     }

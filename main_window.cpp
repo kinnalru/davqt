@@ -18,11 +18,17 @@
 */
 
 #include <QDebug>
+#include <QUrl>
 #include <QProgressBar>
 #include <QSystemTrayIcon>
 #include <QMenu>
 
+#include "3rdparty/preferences/src/preferences_dialog.h"
+
 #include "tools.h"
+
+#include "settings/main_settings.h"
+#include "settings/settings.h"
 
 #include "ui_main_window.h"
 #include "main_window.h"
@@ -38,19 +44,57 @@ main_window_t::main_window_t(QWidget* parent)
     , p_(new Pimpl())
 {
     p_->ui.setupUi(this);
-    
-    const QString localfolder = "/tmp/111";
-    const QString remotefolder = "/1";    
 
+    QSystemTrayIcon* tray = new QSystemTrayIcon(QIcon("icons:sync.png"), this);
+    tray->setVisible(true);
+    
+    QMenu* menu = new QMenu();
+
+    ::connect(menu->addAction(QIcon("icons:prefs.png"), QObject::tr("Settings")), SIGNAL(triggered(bool)), [this] {
+        preferences_dialog d(preferences_dialog::Auto, true, this);
+        d.setWindowTitle(tr("Settings"));
+        d.setWindowIcon(QIcon("icons:prefs.png"));
+        d.add_item(new main_settings_t());
+        d.exec();
+        restart();
+    });
+    
+    ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
+        qApp->exit(0);
+    });
+
+    tray->setContextMenu(menu);
+    connect(tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
+    
+    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked()), this, SLOT(sync())));    
+    
+    restart();
+}
+
+main_window_t::~main_window_t() {
+    
+}
+
+void main_window_t::restart()
+{
+    if (p_->manager) {
+        p_->manager->disconnect(this);
+        p_->manager->disconnect();
+        p_->manager->deleteLater();
+        p_->ui.actions->clear();
+    }
+
+    const QUrl url(settings().host());
+    
     sync_manager_t::connection conn = {
-        "https",
-        "webdav.yandex.ru",
-        -1,
-        "",
-        ""
+        url.scheme(),
+        url.host(),
+        url.port(),
+        settings().username(),
+        settings().password()
     };
     
-    p_->manager = new sync_manager_t(0, conn, localfolder, remotefolder);
+    p_->manager = new sync_manager_t(0, conn, settings().localfolder(), settings().remotefolder());
 
     Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));         
     
@@ -62,30 +106,35 @@ main_window_t::main_window_t(QWidget* parent)
     Q_VERIFY(connect(p_->manager, SIGNAL(action_error(action_t)), this, SLOT(action_error(action_t))));
     Q_VERIFY(connect(p_->manager, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
     
+    Q_VERIFY(::connect(p_->manager, SIGNAL(busy()), [this] {p_->ui.update->setEnabled(false);}));
+    Q_VERIFY(::connect(p_->manager, SIGNAL(ready()), [this] {p_->ui.update->setEnabled(true);}));
+    
+    Q_VERIFY(::connect(p_->manager, SIGNAL(busy()), [this] {p_->ui.sync->setEnabled(false);}));
+    Q_VERIFY(::connect(p_->manager, SIGNAL(ready()), [this] {p_->ui.sync->setEnabled(true);}));
+    
     Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
-    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked()), this, SLOT(sync())));
     
-    QSystemTrayIcon* tray = new QSystemTrayIcon(QIcon("icons:sync.png"), this);
-    tray->setVisible(true);
+    static std::function<void ()> sync_func;
     
-    QMenu* menu = new QMenu();
-
-    ::connect(menu->addAction(QIcon("icons:prefs.png"), QObject::tr("Preferences")), SIGNAL(triggered(bool)), [] {
-
-    });
+    sync_func = [this, &sync_func] {
+        static bool guard = false;
+        if (!guard && settings().interval() > 0) {
+            guard = true;
+            Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
+                sync();
+            }));
+            Q_VERIFY(::connectOnce(p_->manager, SIGNAL(sync_finished()), [this, &guard] {
+                guard = false;
+            }));   
+            p_->manager->update_status();
+        }
+        
+        singleShot(std::max(settings().interval() * 1000, 10000), sync_func);
+    };
     
-    ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
-        qApp->exit(0);
-    });
-
-
-    tray->setContextMenu(menu);
-    connect(tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
+    singleShot(std::max(settings().interval() * 1000, 10000), sync_func);
 }
 
-main_window_t::~main_window_t() {
-    
-}
 
 void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
     if (reason == QSystemTrayIcon::QSystemTrayIcon::Trigger) {
@@ -102,11 +151,6 @@ void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
         raise();
         activateWindow();
     }
-}
-
-void main_window_t::show_preferences()
-{
-    
 }
 
 void main_window_t::sync()
@@ -262,13 +306,11 @@ void main_window_t::action_finished(const action_t& action)
 
 void main_window_t::sync_started()
 {
-    p_->ui.sync->setEnabled(false);
     qDebug() << "! =========== started!";
 }
 
 void main_window_t::sync_finished()
 {
-    p_->ui.sync->setEnabled(true);
     qDebug() << "! =========== completed";
 }
 

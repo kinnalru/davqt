@@ -28,6 +28,21 @@
 #include "types.h"
 #include "database.h"
 
+class thread_pool_t : public QThreadPool {
+    Q_OBJECT
+public:
+    thread_pool_t(QObject* parent = 0);
+    virtual ~thread_pool_t() {};
+    
+    void start(QRunnable* runnable);
+    
+Q_SIGNALS:
+    void busy();
+    void ready();
+private:
+    bool busy_;
+};
+
 class sync_manager_t : public QObject {
     Q_OBJECT
 public:
@@ -43,15 +58,19 @@ public:
     sync_manager_t(QObject* parent, connection conn, const QString& localfolder, const QString& remotefolder);
     virtual ~sync_manager_t();
 
-static QThreadPool* pool();
+static thread_pool_t* pool();
 
 public Q_SLOTS:
     void update_status();
     void sync(const Actions& act);
     
-
+    bool is_busy() const;
     
 Q_SIGNALS:
+    
+    void busy();
+    void ready();
+    
     void status_updated(const Actions& actions);
     void status_error(const QString& error);
     

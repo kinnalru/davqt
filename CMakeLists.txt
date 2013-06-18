@@ -26,6 +26,8 @@ set(MOC
     session.h
     sync.h    
     tools.h
+    settings/settings.h
+    settings/main_settings.h
 )
 
 set(SOURCES 
@@ -35,10 +37,12 @@ set(SOURCES
     main_window.cpp
     session.cpp
     sync.cpp
+    settings/main_settings.cpp
 )
 
 set(IFACES
     main_window.ui
+    settings/main_settings.ui
 )
 
 set(RESOURCES
@@ -53,6 +57,7 @@ qt4_wrap_ui(SOURCES ${IFACES})
 qt4_add_resources(SOURCES ${RESOURCES})
 
 add_executable(${TARGET} WIN32 ${HEADERS} ${SOURCES})
-target_link_libraries(${TARGET} ${Boost_LIBRARIES} ${QT_LIBRARIES} ${DEPS} neon)
+target_link_libraries(${TARGET} ${Boost_LIBRARIES} ${QT_LIBRARIES} ${DEPS} neon preferences)
+
 
 

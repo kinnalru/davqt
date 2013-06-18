@@ -21,7 +21,7 @@ namespace detail {
         connect_simple_helper(QObject *parent, const std::function<void()> &f) : QObject(parent), f_(f), del_(false) {}
 
     public Q_SLOTS:
-        void signaled() { f_(); if (del_) deleteLater();}
+        void signaled() { f_(); if (del_) {disconnect(this); deleteLater();} }
 
     public:
         std::function<void()> f_;
@@ -33,6 +33,13 @@ template <class T>
 bool connect(QObject *sender, const char *signal, const T &reciever, Qt::ConnectionType type = Qt::AutoConnection) {
     std::function<void()> f = reciever;
     return QObject::connect(sender, signal, new detail::connect_simple_helper(sender, f), SLOT(signaled()), type);
+}
+
+template <class T>
+bool connectOnce(QObject *sender, const char *signal, const T &reciever, Qt::ConnectionType type = Qt::AutoConnection) {
+    std::function<void()> f = reciever;
+    auto h = new detail::connect_simple_helper(sender, f); h->del_ = true;
+    return QObject::connect(sender, signal, h, SLOT(signaled()), type);
 }
 
 template <class T>

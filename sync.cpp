@@ -412,35 +412,6 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
     return actions;
 }
 
-QMutex poolmx;
-QThreadPool* pool_s = NULL;
-
-sync_manager_t::sync_manager_t(QObject* parent, sync_manager_t::connection conn, const QString& localfolder, const QString& remotefolder)
-    : QObject(parent)
-    , conn_(conn)
-    , lf_(localfolder), rf_(remotefolder)
-    , localdb_(lf_ + "/" + db_t::prefix + "/db", lf_)
-{
-    static int r1 = qRegisterMetaType<action_t>("action_t");
-    static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
-    static int r3 = qRegisterMetaType<Actions>("Actions");    
-}
-
-sync_manager_t::~sync_manager_t()
-{}
-
-QThreadPool* sync_manager_t::pool()
-{
-    if (!pool_s) {
-        QMutexLocker l(&poolmx);
-        if (!pool_s) {
-            pool_s = new QThreadPool(0);
-            pool_s->setMaxThreadCount(QThread::idealThreadCount());
-        }
-    }
-    return pool_s;
-}
-
 template <typename Function>
 void run_in_thread(QThread* th, Function func) {
     QTimer* timer = new QTimer(0);
@@ -454,6 +425,65 @@ void run_in_thread(QThread* th, Function func) {
     });
 
     timer->moveToThread(th);
+}
+
+thread_pool_t::thread_pool_t(QObject* parent)
+    : QThreadPool(parent)
+    , busy_(false)
+{
+    QThread* controler = new QThread(this);
+    run_in_thread(controler, [this, controler] {
+        Q_FOREVER {
+            if (busy_ && this->waitForDone(1000)) {
+                busy_ = false;
+                Q_EMIT ready();
+                sleep(1);
+            }
+            sleep(1);
+        }
+    });
+    controler->start(); 
+}
+
+void thread_pool_t::start(QRunnable* runnable)
+{
+    busy_ = true;
+    Q_EMIT busy();
+    QThreadPool::start(runnable);
+}
+
+
+
+QMutex poolmx;
+thread_pool_t* pool_s = NULL;
+
+sync_manager_t::sync_manager_t(QObject* parent, sync_manager_t::connection conn, const QString& localfolder, const QString& remotefolder)
+    : QObject(parent)
+    , conn_(conn)
+    , lf_(localfolder), rf_(remotefolder)
+    , localdb_(lf_ + "/" + db_t::prefix + "/db", lf_)
+{
+    static int r1 = qRegisterMetaType<action_t>("action_t");
+    static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
+    static int r3 = qRegisterMetaType<Actions>("Actions");    
+    
+    Q_VERIFY(connect(pool(), SIGNAL(busy()), this, SIGNAL(busy())));
+    Q_VERIFY(connect(pool(), SIGNAL(ready()), this, SIGNAL(ready())));
+}
+
+sync_manager_t::~sync_manager_t()
+{}
+
+thread_pool_t* sync_manager_t::pool()
+{
+    if (!pool_s) {
+        QMutexLocker l(&poolmx);
+        if (!pool_s) {
+            pool_s = new thread_pool_t(0);
+            pool_s->setMaxThreadCount(QThread::idealThreadCount());
+        }
+    }
+    return pool_s;
 }
 
 struct runnable_t : public QRunnable {
@@ -475,9 +505,7 @@ void sync_manager_t::update_status()
             session.set_ssl();
             session.open();
             
-            qDebug() << "update1";
             const QList<action_t> actions = scan_and_compare(localdb_, session, lf_, rf_);    
-            qDebug() << "update2";
             Q_EMIT status_updated(actions);
         } 
         catch (const std::exception& e) {
@@ -509,8 +537,6 @@ void sync_manager_t::sync(const Actions& act)
             Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
             Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
             Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
-            
-            //             !QProcess::execute(QString("diff %1 %2").arg(action.local_file).arg(tmppath))
             
             action_processor_t processor(session, localdb_,
                 [] (action_processor_t::resolve_ctx& ctx) {
@@ -570,6 +596,10 @@ void sync_manager_t::sync(const Actions& act)
 
 }
 
+bool sync_manager_t::is_busy() const
+{
+    return pool()->activeThreadCount();
+}
 
 
 
