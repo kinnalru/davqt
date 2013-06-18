@@ -81,9 +81,9 @@ struct stat_t {
 struct db_entry_t {
     
     db_entry_t(const QString& r, const QString& f, const QString& n, const stat_t& ls, const stat_t& rs, bool d)
-        : root(r), folder(f), name(n), local(ls), remote(rs), dir(d) {}
+        : root(r), folder(f), name(n), local(ls), remote(rs), dir(d), bad(false) {}
     
-    db_entry_t() : dir(false) {}
+    db_entry_t() : dir(false), bad(false) {}
     
     bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && local.empty() && remote.empty();}
     
@@ -95,6 +95,7 @@ struct db_entry_t {
     stat_t remote;
     
     bool dir;
+    bool bad;
 };
 
 /// describes action needed to perform

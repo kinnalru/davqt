@@ -7,6 +7,7 @@
 const QString local_c = "local";
 const QString remote_c = "remote";
 const QString folder_c = "folder";
+const QString bad_c = "bad";
 
 const QString db_t::prefix = ".davqt";
 const QString db_t::tmpprefix = ".davtmp";
@@ -42,6 +43,7 @@ db_t::db_t(const QString& dbpath, const QString& localroot)
                 stat_t(s->value(remote_c).toMap()),
                 s->value(folder_c).toBool()
             );
+            dbfolder[file].bad = s->value(bad_c).toBool();
         }
     }
 }
@@ -138,7 +140,8 @@ void db_t::save(const QString& absolutefilepath, const db_entry_t& e)
 
     s->setValue(local_c,  sv.local.dump());
     s->setValue(remote_c, sv.remote.dump());
-    s->setValue(folder_c, sv.dir);    
+    s->setValue(folder_c, sv.dir);   
+    s->setValue(bad_c, sv.bad);
 }
 
 void db_t::remove(const QString& absolutefilepath)

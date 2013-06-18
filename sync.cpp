@@ -72,6 +72,10 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
         qDebug() << " -> etag changed:" << dbentry.remote.etag << " -> " << remote.etag;
     }
     
+    if (dbentry.bad) {
+        mask |= action_t::local_changed;
+    }
+    
     if (mask == action_t::local_changed) return action_t::local_changed;
     if (mask == action_t::remote_changed) return action_t::remote_changed;
     

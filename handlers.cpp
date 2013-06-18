@@ -42,6 +42,7 @@ struct upload_handler : base_handler_t {
         e.local = action.local;
         e.remote = remotestat;
         e.dir = false;
+        e.bad = false;
         db.save(e.folder + "/" + e.name, e);
     }
 };
@@ -68,10 +69,11 @@ struct local_change_handler : upload_handler {
             e.local = action.local;
             e.remote = remotestat;
             e.dir = false;
+            e.bad = false;
             db.save(e.folder + "/" + e.name, e);
         }
         else {
-            upload_handler::operator()(session, db, action);
+            upload_handler::do_request(session, db, action);
         }
     }
 };
@@ -192,6 +194,7 @@ struct conflict_handler : base_handler_t {
                 e.local = localstat;
                 e.remote = action.remote;
                 e.dir = false;        
+                e.bad = true;
                 db.save(e.folder + "/" + e.name, e);  
                 
                 const action_t act(action_t::local_changed,
