@@ -555,8 +555,8 @@ void sync_manager_t::sync(const Actions& act)
     };
     
     pool()->start(new runnable_t(syncer));
-//     pool()->start(new runnable_t(syncer));
-//     pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
     
     QThread* controler = new QThread(this);
     connect(controler, SIGNAL(finished()), controler, SLOT(deleteLater()));
@@ -564,7 +564,7 @@ void sync_manager_t::sync(const Actions& act)
         pool()->waitForDone();        
         Q_EMIT sync_finished();
         controler->quit();
-//         controler->deleteLater();
+        controler->deleteLater();
     });
     controler->start();
 

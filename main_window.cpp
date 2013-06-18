@@ -213,7 +213,8 @@ void main_window_t::action_started(const action_t& action)
     if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
         pb->setMinimum(0);
         pb->setMaximum(0);
-        pb->setValue(0);    
+        pb->setValue(0);
+        pb->setFormat("%v of %m (%p%)");
     }
 }
 
