@@ -3,6 +3,12 @@
     <file>images/exit.png</file>
     <file>images/sync.png</file>
     <file>images/prefs.png</file>
+    <file>images/folder-remote.png</file>
+	<file>images/state-error.png</file>
+	<file>images/state-offline.png</file>
+	<file>images/state-ok.png</file>
+	<file>images/state-pause.png</file>
+	<file>images/state-sync.png</file>
   </qresource>
   <qresource prefix="/images">
   </qresource>

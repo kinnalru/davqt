@@ -565,9 +565,11 @@ void sync_manager_t::sync(const Actions& act)
                     processor.process(current);
                     Q_EMIT action_success(current);
                 }
+                catch(const qt_exception_t& e) {
+                    Q_EMIT action_error(current, e.message());
+                }
                 catch(const std::exception& e) {
-                    qCritical() << "Error when syncing action:" << current.type << " " << current.local_file << " <-> " << current.remote_file << " " << e.what();
-                    Q_EMIT action_error(current);
+                    Q_EMIT action_error(current, e.what());
                 }
                 
             }
@@ -580,20 +582,11 @@ void sync_manager_t::sync(const Actions& act)
         actions.reset();        
     };
     
-    pool()->start(new runnable_t(syncer));
-    pool()->start(new runnable_t(syncer));
-    pool()->start(new runnable_t(syncer));
+    Q_VERIFY(::connectOnce(pool(), SIGNAL(ready()), [this] {Q_EMIT sync_finished();}));
     
-    QThread* controler = new QThread(this);
-    connect(controler, SIGNAL(finished()), controler, SLOT(deleteLater()));
-    run_in_thread(controler, [this, controler] {
-        pool()->waitForDone();        
-        Q_EMIT sync_finished();
-        controler->quit();
-        controler->deleteLater();
-    });
-    controler->start();
-
+    pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
+    pool()->start(new runnable_t(syncer));
 }
 
 bool sync_manager_t::is_busy() const

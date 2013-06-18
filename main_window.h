@@ -46,7 +46,7 @@ public Q_SLOTS:
     
     void action_started(const action_t& action);
     void action_success(const action_t& action);
-    void action_error(const action_t& action);
+    void action_error(const action_t& action, const QString& message);
     
     void action_progress(const action_t& action, qint64 progress, qint64 total);        
 
