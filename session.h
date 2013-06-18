@@ -42,7 +42,7 @@ public:
     void set_ssl();
     void open();    
     
-    std::vector<remote_res_t> get_resources(const QString& path);
+    std::vector<remote_res_t> get_resources(const QString& unescaped_path);
     
     stat_t get(const QString& unescaped_path, int fd);
     stat_t put(const QString& unescaped_path, int fd);

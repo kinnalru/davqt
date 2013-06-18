@@ -333,15 +333,16 @@ void session_t::open()
     }
 }
 
-std::vector<remote_res_t> session_t::get_resources(const QString& path) {
+std::vector<remote_res_t> session_t::get_resources(const QString& unescaped_path) {
+    std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);  
     
     std::shared_ptr<ne_propfind_handler> ph(
-        ne_propfind_create(p_->session.get(), qPrintable(path), NE_DEPTH_ONE),
+        ne_propfind_create(p_->session.get(), path.get(), NE_DEPTH_ONE),
         ne_propfind_destroy            
     );
 
     request_ctx_t ctx;
-    ctx.path = path;
+    ctx.path = unescaped_path;
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
