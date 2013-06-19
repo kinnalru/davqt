@@ -45,6 +45,7 @@ main_settings_t::main_settings_t(QWidget* parent)
     Q_VERIFY(connect(p_->ui.username, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.password, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.interval, SIGNAL(valueChanged(int)), this, SLOT(int_changed())));
+    Q_VERIFY(connect(p_->ui.enabled, SIGNAL(clicked(bool)), this, SLOT(int_changed())));
 }
 
 main_settings_t::~main_settings_t()
@@ -63,6 +64,7 @@ void main_settings_t::update_preferences()
     p_->ui.username->setText(s.username());
     p_->ui.password->setText(s.password());
     p_->ui.interval->setValue(s.interval());
+    p_->ui.enabled->setChecked(s.enabled());
     lock_change_ = false;
 }
 
@@ -77,7 +79,7 @@ void main_settings_t::accept()
     s.set_username(p_->ui.username->text());
     s.set_password(p_->ui.password->text());
     s.set_interval(p_->ui.interval->value());
-    
+    s.set_enabled(p_->ui.enabled->isChecked());
 }
 
 void main_settings_t::reject()

@@ -53,7 +53,8 @@ public Q_SLOTS:
     void tray_activated(QSystemTrayIcon::ActivationReason);
 private:
     void action_finished(const action_t& action);
-
+    void start_sync();
+    
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
