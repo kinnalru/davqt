@@ -89,6 +89,10 @@ main_window_t::main_window_t(QWidget* parent)
     connect(tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
     
     restart();
+    QTimer* timer = new QTimer(this);
+    Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(sync())));
+    timer->setInterval(1000);
+    timer->start();
 }
 
 main_window_t::~main_window_t() {
@@ -152,8 +156,6 @@ void main_window_t::restart()
 //     Q_VERIFY(::connect(p_->manager, SIGNAL(ready()), [this] {p_->ui.sync->setEnabled(true);}));
     
 //     Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
-    
-    QTimer::singleShot(1000, this, SLOT(sync()));
 }
 
 
@@ -176,7 +178,6 @@ void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
 
 void main_window_t::sync()
 {
-    QTimer::singleShot(1000, this, SLOT(sync()));    
     const int interval = settings().interval();
     const QDateTime last = settings().last_sync();
     
