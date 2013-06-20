@@ -22,6 +22,7 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QProcess>
+#include <QEventLoop>
 
 #include "sync.h"
 #include "handlers.h"
@@ -378,7 +379,6 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
     QList<action_t> actions;
     
     {
-        qDebug() << "scan1";
         // Step 1 - making snapshot in filenames of local/remote 'filesystem'
         const snapshot_data filesnap(
             remote_cache,
@@ -388,14 +388,11 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
             remoteNames(remote_cache, files)
         );
 
-        qDebug() << "scan2";
         actions << handle_files(localdb, localfolder, remotefolder, filesnap);
-        qDebug() << "scan3";
     }
     
      
     {
-        qDebug() << "scan4";
         // Step 2 - making snapshot in directories of local/remote 'filesystem'
         const snapshot_data dirsnap(
             remote_cache,
@@ -405,7 +402,6 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
             remoteNames(remote_cache, folders)
         );
         
-        qDebug() << "scan5";
         actions << handle_dirs(localdb, session, localfolder, remotefolder, dirsnap);    
     }
     
@@ -469,7 +465,7 @@ sync_manager_t::sync_manager_t(QObject* parent, sync_manager_t::connection conn,
     
     Q_VERIFY(connect(pool(), SIGNAL(busy()), this, SIGNAL(busy())));
     Q_VERIFY(connect(pool(), SIGNAL(ready()), this, SIGNAL(ready())));
-}
+    Q_VERIFY(connect(pool(), SIGNAL(ready()), this, SIGNAL(sync_finished())));}
 
 sync_manager_t::~sync_manager_t()
 {}
@@ -529,7 +525,7 @@ void sync_manager_t::sync(const Actions& act)
         try {
             session_t session(0, conn_.schema, conn_.host, conn_.port);
         
-            Q_VERIFY(connect(this, SIGNAL(close1()), &session, SLOT(close())));
+            Q_VERIFY(connect(this, SIGNAL(stop_signal()), &session, SLOT(cancell()), Qt::DirectConnection));
             
             session.set_auth(conn_.login, conn_.password);
             session.set_ssl();
@@ -543,16 +539,18 @@ void sync_manager_t::sync(const Actions& act)
             
             action_processor_t processor(session, localdb_,
                 [] (action_processor_t::resolve_ctx& ctx) {
-                    return !QProcess::execute(QString("diff %1 %2").arg(ctx.local_old).arg(ctx.remote_new));
+                    return !QProcess::execute(QString("diff '%1' '%2'").arg(ctx.local_old).arg(ctx.remote_new));
                 },
                 [] (action_processor_t::resolve_ctx& ctx) {
                     ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
-                    return !QProcess::execute(QString("kdiff3 -o %3 %1 %2").arg(ctx.local_old).arg(ctx.remote_new).arg(ctx.result));
+                    return !QProcess::execute(QString("kdiff3 -o '%3' '%1' '%2'").arg(ctx.local_old).arg(ctx.remote_new).arg(ctx.result));
                 });
             
             action_t current;
             
             Q_FOREVER {
+                if (session.is_closed()) break;
+                
                 {
                     QMutexLocker l(&syncmx);
                     if (actions->isEmpty()) {
@@ -574,7 +572,6 @@ void sync_manager_t::sync(const Actions& act)
                 catch(const std::exception& e) {
                     Q_EMIT action_error(current, e.what());
                 }
-                
             }
         }
         catch (const std::exception& e) {
@@ -582,10 +579,8 @@ void sync_manager_t::sync(const Actions& act)
         }
         
         QMutexLocker l(&syncmx);
-        actions.reset();        
+        actions.reset();  
     };
-    
-    Q_VERIFY(::connectOnce(pool(), SIGNAL(ready()), [this] {Q_EMIT sync_finished();}));
     
     pool()->start(new runnable_t(syncer));
     pool()->start(new runnable_t(syncer));
@@ -598,6 +593,19 @@ bool sync_manager_t::is_busy() const
 }
 
 
+void sync_manager_t::stop()
+{
+    QEventLoop loop;
+    Q_VERIFY(connect(this, SIGNAL(ready()), &loop, SLOT(quit())));
+    Q_EMIT stop_signal();        
+    
+    while(is_busy()) {
+        QTimer::singleShot(1000, &loop, SLOT(quit()));
+        qDebug() << "loop1";
+        loop.exec();                        
+        qDebug() << "loop2";
+    }
+}
 
 
 

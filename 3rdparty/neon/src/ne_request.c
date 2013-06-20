@@ -380,6 +380,10 @@ static int send_request_body(ne_request *req, int retry)
     }
     
     while ((bytes = req->body_cb(req->body_ud, buffer, sizeof buffer)) > 0) {
+    if(!sess->connected) {
+        ne_set_error(req->session, _("Connection closed"));
+        return NE_ERROR;
+    }
 	int ret = ne_sock_fullwrite(sess->socket, buffer, bytes);
         if (ret < 0) {
             int aret = aborted(req, _("Could not send request body"), ret);
@@ -711,6 +715,11 @@ static int read_response_block(ne_request *req, struct ne_response *resp,
     ne_socket *const sock = req->session->socket;
     size_t willread;
     ssize_t readlen;
+
+    if(!req->session->connected) {
+        ne_set_error(req->session, _("Connection closed"));
+        return NE_ERROR;
+    }
     
     switch (resp->mode) {
     case R_CHUNKED:

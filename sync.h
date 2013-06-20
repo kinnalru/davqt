@@ -63,8 +63,7 @@ public Q_SLOTS:
     void update_status();
     void sync(const Actions& act);
     
-    void stop() {
-        qDebug() << "before close"; Q_EMIT close1(); qDebug() << "after close"; }
+    void stop();
     
     bool is_busy() const;
     
@@ -86,7 +85,7 @@ Q_SIGNALS:
     
     void progress(const action_t& action, qint64 progress, qint64 total);
     
-    void close1();
+    void stop_signal();
 
 private:
     const connection conn_;
@@ -107,7 +106,7 @@ Q_SIGNALS:
     
 public Q_SLOTS:
     void int_progress(qint64 prog, qint64 total) {
-        Q_EMIT progress(action_, prog, (total) ? total : action_.local.size);
+        Q_EMIT progress(action_, prog, (total) ? total : (action_.local.size != -1) ? action_.local.size : action_.remote.size);
     }
 private:
     action_t action_;

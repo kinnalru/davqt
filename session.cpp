@@ -80,6 +80,13 @@ struct auth_data_t {
     QString passwd;
 };
 
+struct neon_context_t {
+    stat_t stat;
+    volatile bool& cancell;
+    ne_session* session;
+};
+
+
 static int auth(void *userdata, const char *realm, int attempt, char *user, char *pwd)
 {
     if (attempt) {
@@ -165,6 +172,14 @@ static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *ce
     return ret;
 }
 
+typedef std::function<void (ne_session_status, const ne_session_status_info*)> Notify;
+struct session_t::Pimpl {
+    auth_data_t auth;
+    volatile bool cancell;
+    Notify notify;    
+    std::shared_ptr<ne_session> session;
+};
+
 struct request_ctx_t {
     QString path;
     std::vector<remote_res_t> resources;
@@ -244,31 +259,10 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     ctx->resources.push_back(resource);
 }
 
-void session_t::notifier(void* userdata, int status_int, const void* raw_info)
+void notify(void *userdata, ne_session_status status, const ne_session_status_info *info)
 {
-    ne_session_status status = ne_session_status(status_int);
-    const ne_session_status_info* info = reinterpret_cast<const ne_session_status_info*>(raw_info);
-    session_t* session = reinterpret_cast<session_t*>(userdata);
-    
-    switch (status) {
-        case ne_status_lookup:
-        case ne_status_connecting:
-            break;
-        case ne_status_connected:
-            Q_EMIT session->connected();
-            break;
-        case ne_status_sending: 
-            Q_EMIT session->put_progress(info->sr.progress, info->sr.total);
-            break;
-        case ne_status_recving:
-            Q_EMIT session->get_progress(info->sr.progress, info->sr.total);
-            break;
-        case ne_status_disconnected:
-            Q_EMIT session->disconnected();
-            break;
-        default: 
-            Q_ASSERT(!"Unhandled status type");
-    };
+    Notify* fn = reinterpret_cast<Notify*>(userdata);
+    fn->operator()(status, info);
 }
 
 static int http_code(ne_session* session) {
@@ -283,16 +277,11 @@ static int http_code(ne_session* session) {
     return err;
 }
 
-struct session_t::Pimpl {
-    
-    std::shared_ptr<ne_session> session;
-    auth_data_t auth;
-};
-
 session_t::session_t(QObject* parent, const QString& schema, const QString& host, quint32 port)
     : QObject(parent)
     , p_(new Pimpl)
 {
+    p_->cancell = false;
     p_->session.reset(
         ne_session_create(schema.toLocal8Bit().constData(), host.toLocal8Bit().constData(), (port == -1) ? ne_uri_defaultport("https") : port),
         ne_session_destroy
@@ -301,11 +290,40 @@ session_t::session_t(QObject* parent, const QString& schema, const QString& host
     if (!p_->session.get()) throw std::runtime_error("Can't create session");
     
     
-    ne_set_notifier(p_->session.get(), ne_notify_status(session_t::notifier), this);
+    p_->notify = [this] (ne_session_status status, const ne_session_status_info *info) {
+        if (p_->cancell) {
+            ne_set_notifier(p_->session.get(), NULL, NULL);
+            ne_close_connection(p_->session.get());
+        }
+        
+        switch (status) {
+            case ne_status_lookup:
+            case ne_status_connecting:
+                break;
+            case ne_status_connected:
+                Q_EMIT connected();
+                break;
+            case ne_status_sending: 
+                Q_EMIT put_progress(info->sr.progress, info->sr.total);
+                break;
+            case ne_status_recving:
+                Q_EMIT get_progress(info->sr.progress, info->sr.total);
+                break;
+            case ne_status_disconnected:
+                Q_EMIT disconnected();
+                break;
+            default: 
+                Q_ASSERT(!"Unhandled status type");
+        };
+    }; 
+    
+    ne_set_notifier(p_->session.get(), notify, &p_->notify);
 }
 
 session_t::~session_t()
-{}
+{
+    ne_set_notifier(p_->session.get(), NULL, NULL);
+}
 
 void session_t::set_auth(const QString& user, const QString& password)
 {
@@ -326,18 +344,21 @@ void session_t::open()
 
     ne_server_capabilities caps = {0, 0, 0};
     int ret = ne_options(p_->session.get(), path.get(), &caps);
-    
     if (ret) {
-        std::cerr << ne_get_error(p_->session.get()) << std::endl;;
         throw ne_exception_t(http_code(p_->session.get()), QString("Can't get server options:") + ne_get_error(p_->session.get()));
     }
 }
 
-void session_t::close()
+void session_t::cancell()
 {
-    qDebug() << "!!!!!CLOSE!";
-    ne_close_connection(p_->session.get());
+    p_->cancell = true;
 }
+
+bool session_t::is_closed() const
+{
+    return p_->cancell;
+}
+
 
 std::vector<remote_res_t> session_t::get_resources(const QString& unescaped_path) {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);  
@@ -353,7 +374,6 @@ std::vector<remote_res_t> session_t::get_resources(const QString& unescaped_path
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
-    
     return ctx.resources;
 }
 
@@ -370,17 +390,17 @@ QString normalize_etag(const char *etag)
 
 int post_send_handler(ne_request *req, void *userdata, const ne_status *status) {
     
-    stat_t* data = reinterpret_cast<stat_t*>(userdata);
+    neon_context_t* ctx = reinterpret_cast<neon_context_t*>(userdata);
     
-    data->etag = normalize_etag(ne_get_response_header(req, "ETag"));
+    ctx->stat.etag = normalize_etag(ne_get_response_header(req, "ETag"));
     
     const char *value = ne_get_response_header(req, "Last-Modified");
     if (!value) value = ne_get_response_header(req, "Date");
 
     if (value) {
-        data->mtime = ne_httpdate_parse(value);
+        ctx->stat.mtime = ne_httpdate_parse(value);
     } else {
-        data->mtime = 0;
+        ctx->stat.mtime = 0;
     }
     
     return NE_OK;
@@ -408,7 +428,6 @@ void session_t::head(const QString& unescaped_path, QString& etag, qlonglong& mt
     int neon_stat = ne_request_dispatch(request.get());
     
     if (neon_stat != NE_OK) {
-        std::cerr << "error when head:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
     
@@ -449,60 +468,74 @@ stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissi
         NULL
     };
     
-    stat_t data;    
+    neon_context_t ctx{
+        stat_t(),
+        p_->cancell,
+        p_->session.get()
+    };  
 
-    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
-    ne_hook_post_send(p_->session.get(), post_send_handler, &data);
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, &ctx);
+    ne_hook_post_send(p_->session.get(), post_send_handler, &ctx);
     
     int neon_stat = ne_proppatch(p_->session.get(), path.get(), ops);
     
-    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
-    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, &ctx);
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &ctx);
     
     if (neon_stat != NE_OK) {
-        std::cerr << "error when ne_proppatch:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
 
-    return data;
+    return ctx.stat;
 }
 
 stat_t session_t::get(const QString& unescaped_path, int fd)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
-    stat_t data;
+    neon_context_t ctx{
+        stat_t(),
+        p_->cancell,
+        p_->session.get()
+    };  
     
-    ne_hook_post_send(p_->session.get(), post_send_handler, &data);
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, &ctx);    
+    ne_hook_post_send(p_->session.get(), post_send_handler, &ctx);
+    
     int neon_stat = ne_get(p_->session.get(), path.get(), fd);
-    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
+    
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &ctx);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, &ctx);    
 
     if (neon_stat != NE_OK) {
-        std::cerr << "error when get:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
 
-    return data;
+    return ctx.stat;
 }
 
 stat_t session_t::put(const QString& unescaped_path, int fd)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
-    stat_t data;
+    neon_context_t ctx{
+        stat_t(),
+        p_->cancell,
+        p_->session.get()
+    };  
     
-    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
-    ne_hook_post_send(p_->session.get(), post_send_handler, &data);
+    
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, &ctx);
+    ne_hook_post_send(p_->session.get(), post_send_handler, &ctx);
+    
+    int neon_stat = ne_put(p_->session.get(), path.get(), fd); 
 
-    int neon_stat = ne_put(p_->session.get(), path.get(), fd);
-    
-    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
-    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &ctx);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, &ctx);
     
     if (neon_stat != NE_OK) {
-        std::cerr << "error when put:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
     
-    return data;
+    return ctx.stat;
 }
 
 void session_t::remove(const QString& unescaped_path)
@@ -512,7 +545,6 @@ void session_t::remove(const QString& unescaped_path)
     int neon_stat = ne_delete(p_->session.get(), path.get());
     
     if (neon_stat != NE_OK) {
-        std::cerr << "error when delete:" << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }
 }
@@ -526,21 +558,24 @@ stat_t session_t::mkcol(const QString& raw)
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
-    stat_t data;
+    neon_context_t ctx{
+        stat_t(),
+        p_->cancell,
+        p_->session.get()
+    };
     
-    ne_hook_pre_send(p_->session.get(), pre_send_handler, NULL);
-    ne_hook_post_send(p_->session.get(), post_send_handler, &data);    
+    ne_hook_pre_send(p_->session.get(), pre_send_handler, &ctx);
+    ne_hook_post_send(p_->session.get(), post_send_handler, &ctx);    
     
     int neon_stat = ne_mkcol(p_->session.get(), path.get());
     
-    ne_unhook_post_send(p_->session.get(), post_send_handler, &data);
-    ne_unhook_pre_send(p_->session.get(), pre_send_handler, NULL);
+    ne_unhook_post_send(p_->session.get(), post_send_handler, &ctx);
+    ne_unhook_pre_send(p_->session.get(), pre_send_handler, &ctx);
     
     if (neon_stat != NE_OK) {
-        std::cerr << "error when mkcol:" << neon_stat << " " << ne_get_error(p_->session.get()) << std::endl;
         throw std::runtime_error(ne_get_error(p_->session.get()));
     }    
-    return data;
+    return ctx.stat;
 }
 
 

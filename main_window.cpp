@@ -70,14 +70,14 @@ main_window_t::main_window_t(QWidget* parent)
                 Q_VERIFY(connect(p_->manager, SIGNAL(ready()), &waiter, SLOT(reset())));
                 waiter.exec();
                 if (waiter.wasCanceled()) {
-                    qDebug() << "zhopa";
+                    p_->manager->stop();
                 }
             } else {
                 p_->manager->stop();
             }
         }
         
-//         restart();
+        restart();
     });
     
     QAction* enabled_a = menu->addAction(QObject::tr("Enabled"));
@@ -88,7 +88,8 @@ main_window_t::main_window_t(QWidget* parent)
             p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
         } 
         else {
-            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));
+            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
+            p_->manager->stop();
         }
     });
 
@@ -122,7 +123,6 @@ void main_window_t::restart()
         p_->manager->disconnect(this);
         p_->manager->disconnect();
         p_->manager->deleteLater();
-        p_->ui.actions->clear();
     }
 
     QUrl url(settings().host());
@@ -215,7 +215,10 @@ void main_window_t::sync()
         return;
         
     static bool guard = false;
-    if (settings().enabled() && !guard && settings().interval() > 0) {
+    qDebug() << "main sync2 guard:" << guard << " enabled:" << settings().enabled() << "interval:" << interval;    
+    
+    if (settings().enabled() && !guard && interval> 0) {
+        qDebug() << "main sync3";
         guard = true;
         Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
             start_sync();
@@ -320,13 +323,20 @@ void main_window_t::status_updated(const Actions& actions)
 
     Q_FOREACH(QTreeWidgetItem* item, allitems) {
         int index = p_->ui.actions->indexOfTopLevelItem(item);
-        if (index != -1) {
-            delete p_->ui.actions->takeTopLevelItem(index);
-        }
-        else {
+        if (index == -1) {
+            allitems.removeAll(item);
             delete item->parent()->takeChild(item->parent()->indexOfChild(item));
         }
     }
+    
+    Q_FOREACH(QTreeWidgetItem* item, allitems) {
+        int index = p_->ui.actions->indexOfTopLevelItem(item);
+        delete p_->ui.actions->takeTopLevelItem(index);
+    }
+    
+    auto unchanged = groupit(action_t::unchanged);
+    unchanged = p_->ui.actions->takeTopLevelItem(p_->ui.actions->indexOfTopLevelItem(unchanged));
+    p_->ui.actions->addTopLevelItem(unchanged);
     
     p_->ui.actions->resizeColumnToContents(0);
     p_->ui.actions->resizeColumnToContents(1);

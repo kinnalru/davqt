@@ -41,7 +41,9 @@ public:
     void set_auth(const QString& user, const QString& password);
     void set_ssl();
     void open();    
-    Q_SLOT void close();
+
+    Q_SLOT void cancell();
+    bool is_closed() const;
     
     std::vector<remote_res_t> get_resources(const QString& unescaped_path);
     
@@ -62,9 +64,6 @@ Q_SIGNALS:
     void get_progress(qint64 progress, qint64 total);
     void put_progress(qint64 progress, qint64 total);
 
-private:
-    static void notifier(void *userdata, int status_int, const void* raw_info);
-   
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
