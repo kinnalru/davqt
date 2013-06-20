@@ -30,8 +30,8 @@ struct upload_handler : base_handler_t {
         if (!file.open(QIODevice::ReadOnly)) 
             throw qt_exception_t(QString("Can't open file %1: %2").arg(action.local.absolutepath).arg(file.errorString()));
         
-        stat_t remotestat = session.put(action.remote_file, file.handle());
-        remotestat = session.set_permissions(action.remote_file, action.local.perms);
+        stat_t remotestat = session.put(action.remote_file, file.handle(), db.get_entry(action.local_file).remote.etag);
+        remotestat = session.set_permissions(action.remote_file, action.local.perms, remotestat.etag);
         remotestat.perms = action.local.perms;
         
         if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
@@ -59,7 +59,7 @@ struct local_change_handler : upload_handler {
             e.local.mtime == action.local.mtime &&
             e.local.perms != action.local.perms)
         {
-            stat_t remotestat = session.set_permissions(action.remote_file, action.local.perms);
+            stat_t remotestat = session.set_permissions(action.remote_file, action.local.perms, db.get_entry(action.local_file).remote.etag);
             remotestat.perms = action.local.perms;
 
             if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
@@ -166,7 +166,7 @@ struct conflict_handler : base_handler_t {
             QFile::remove(tmppath); 
             
             const stat_t localstat(action.local_file);
-            remotestat = session.set_permissions(action.remote_file, localstat.perms);
+            remotestat = session.set_permissions(action.remote_file, localstat.perms, db.get_entry(action.local_file).remote.etag);
             remotestat.perms = localstat.perms;
             
             if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
@@ -239,7 +239,7 @@ struct local_deleted_handler : base_handler_t {
     }
     
     void do_request(session_t& session, db_t& db, const action_t& action) const {
-        session.remove(action.remote.absolutepath);
+        session.remove(action.remote.absolutepath, db.get_entry(action.local_file).remote.etag);
         db.remove(action.local_file);
     }
 };
@@ -302,7 +302,7 @@ struct upload_dir_handler : base_handler_t {
     void do_request(session_t& session, db_t& db, const action_t& action) const {
         
         stat_t remotestat = session.mkcol(action.remote_file);
-        remotestat = session.set_permissions(action.remote_file, action.local.perms);
+        remotestat = session.set_permissions(action.remote_file, action.local.perms, remotestat.etag);
         remotestat.perms = action.local.perms;
 
         remotestat.size = 0;
@@ -406,7 +406,7 @@ action_processor_t::action_processor_t(session_t& session, db_t& db, Comparer co
     };
 }
 
-bool action_processor_t::process(const action_t& action)
+void action_processor_t::process(const action_t& action)
 {
     auto h = handlers_.find(action.type);
     if (h != handlers_.end()) {
@@ -415,6 +415,7 @@ bool action_processor_t::process(const action_t& action)
         qDebug() << " >>> completed";
     }
     else {
+        if (action.type == action_t::error) return;
         qCritical() << "unhandled action type!:" << action.type;
         Q_ASSERT(!"unhandled action type!");
     }

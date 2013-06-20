@@ -92,7 +92,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
 
 struct snapshot_data {
     
-    snapshot_data(const std::vector<remote_res_t>& rc, const QFileInfoList& lc, const Filenames& local_entries, const Filenames& local_db, const Filenames& remote_entries)
+    snapshot_data(const QList<remote_res_t>& rc, const QFileInfoList& lc, const Filenames& local_entries, const Filenames& local_db, const Filenames& remote_entries)
         : remote_cache(rc)
         , local_cache(lc)
         , local_entries(local_entries)
@@ -105,7 +105,7 @@ struct snapshot_data {
         , remote_added(remote_entries - local_added - local_deleted - local_exists)
     {}
     
-    const std::vector<remote_res_t>& remote_cache;
+    const QList<remote_res_t>& remote_cache;
     const QFileInfoList& local_cache;
     
     const QSet<QString> local_entries;
@@ -125,7 +125,7 @@ auto find_info = [] (const QFileInfoList& cache, const QString& file) {
 };
 
 //helper function to find resource by name
-auto find_resource = [] (const std::vector<remote_res_t>& cache, const QString& file) {
+auto find_resource = [] (const QList<remote_res_t>& cache, const QString& file) {
     return std::find_if(cache.begin(), cache.end(), [&] (const remote_res_t& r) { return r.name == file; });
 };
 
@@ -192,7 +192,7 @@ QList<action_t> handle_files(db_t& localdb, const QString& localfolder, const QS
             auto fileinfo = find_info(snap.local_cache, file);
             Q_ASSERT(fileinfo != snap.local_cache.end());            
             qDebug() << "file " << file << " deleted on server must be deleted localy";
-            actions.push_back(action_t(action_t::remote_deleted,
+            actions.push_back(action_t( stat_t(*fileinfo) == localdb.get_entry(localfile).local ? action_t::remote_deleted : action_t::error,
                 localfile,
                 remotefile,
                 *fileinfo,
@@ -333,7 +333,7 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
 
 QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder)
 {
-    const std::vector<remote_res_t> remote_cache = session.get_resources(remotefolder);
+    const QList<remote_res_t> remote_cache = session.get_resources(remotefolder);
     
     const QFileInfoList local_cache = [&] {
         QFileInfoList ret;
@@ -363,7 +363,7 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
     };
     
      //helper function to obtain only file/filder names from complete REMOTE list
-    auto remoteNames = [] (const std::vector<remote_res_t>& list, filter f) {
+    auto remoteNames = [] (const QList<remote_res_t>& list, filter f) {
         QSet<QString> names;
         Q_FOREACH(const auto& resource, list) {
             if (db_t::skip(resource.name)) continue;
@@ -465,7 +465,7 @@ sync_manager_t::sync_manager_t(QObject* parent, sync_manager_t::connection conn,
     
     Q_VERIFY(connect(pool(), SIGNAL(busy()), this, SIGNAL(busy())));
     Q_VERIFY(connect(pool(), SIGNAL(ready()), this, SIGNAL(ready())));
-    Q_VERIFY(connect(pool(), SIGNAL(ready()), this, SIGNAL(sync_finished())));}
+}
 
 sync_manager_t::~sync_manager_t()
 {}
@@ -523,33 +523,39 @@ void sync_manager_t::sync(const Actions& act)
     std::shared_ptr<Actions> actions(new Actions(act));
     auto syncer = [this, conn_, &localdb_, actions] () mutable {
         try {
-            session_t session(0, conn_.schema, conn_.host, conn_.port);
-        
-            Q_VERIFY(connect(this, SIGNAL(stop_signal()), &session, SLOT(cancell()), Qt::DirectConnection));
             
-            session.set_auth(conn_.login, conn_.password);
-            session.set_ssl();
-            session.open();
+            session_t* session = NULL;
+            progress_adapter_t* adapter = NULL;
+            action_processor_t* processor = NULL;
+            
+            auto init_session = [&, this] {
+                session = new session_t(0, conn_.schema, conn_.host, conn_.port);
+            
+                Q_VERIFY(connect(this, SIGNAL(stop_signal()), session, SLOT(cancell()), Qt::DirectConnection));
+                
+                session->set_auth(conn_.login, conn_.password);
+                session->set_ssl();
+                session->open();
 
-            progress_adapter_t adapter;
-            
-            Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-            Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-            Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
-            
-            action_processor_t processor(session, localdb_,
-                [] (action_processor_t::resolve_ctx& ctx) {
-                    return !QProcess::execute(QString("diff '%1' '%2'").arg(ctx.local_old).arg(ctx.remote_new));
-                },
-                [] (action_processor_t::resolve_ctx& ctx) {
-                    ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
-                    return !QProcess::execute(QString("kdiff3 -o '%3' '%1' '%2'").arg(ctx.local_old).arg(ctx.remote_new).arg(ctx.result));
-                });
-            
+                adapter = new progress_adapter_t();
+                
+                Q_VERIFY(connect(session, SIGNAL(get_progress(qint64,qint64)), adapter, SLOT(int_progress(qint64,qint64))));
+                Q_VERIFY(connect(session, SIGNAL(put_progress(qint64,qint64)), adapter, SLOT(int_progress(qint64,qint64))));
+                Q_VERIFY(connect(adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
+                
+                processor = new action_processor_t(*session, localdb_,
+                    [] (action_processor_t::resolve_ctx& ctx) {
+                        return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+                    },
+                    [] (action_processor_t::resolve_ctx& ctx) {
+                        ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
+                        return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+                    });
+            };
             action_t current;
             
             Q_FOREVER {
-                if (session.is_closed()) break;
+                if (session && session->is_closed()) break;
                 
                 {
                     QMutexLocker l(&syncmx);
@@ -559,11 +565,13 @@ void sync_manager_t::sync(const Actions& act)
                     current = actions->takeFirst();
                 }
                 
-                adapter.set_action(current);
+                if (!session) init_session();
+                
+                adapter->set_action(current);
             
                 try {
                     Q_EMIT action_started(current);
-                    processor.process(current);
+                    processor->process(current);
                     Q_EMIT action_success(current);
                 }
                 catch(const qt_exception_t& e) {
@@ -582,6 +590,8 @@ void sync_manager_t::sync(const Actions& act)
         actions.reset();  
     };
     
+    Q_VERIFY(::connectOnce(this, SIGNAL(ready()), [this] {Q_EMIT sync_finished();}));
+    
     pool()->start(new runnable_t(syncer));
     pool()->start(new runnable_t(syncer));
     pool()->start(new runnable_t(syncer));
@@ -595,10 +605,13 @@ bool sync_manager_t::is_busy() const
 
 void sync_manager_t::stop()
 {
+    qDebug() << "STOP!";
     QEventLoop loop;
     Q_VERIFY(connect(this, SIGNAL(ready()), &loop, SLOT(quit())));
-    Q_EMIT stop_signal();        
+    Q_VERIFY(connect(this, SIGNAL(stop_signal()), &loop, SLOT(quit())));
+    QTimer::singleShot(0, this, SIGNAL(stop_signal()));
     
+    loop.exec();
     while(is_busy()) {
         QTimer::singleShot(1000, &loop, SLOT(quit()));
         qDebug() << "loop1";

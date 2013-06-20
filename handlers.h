@@ -35,7 +35,7 @@ public:
     
     action_processor_t(session_t& session, db_t& db, Comparer comparer, Resolver resolver);
     
-    bool process(const action_t& action);
+    void process(const action_t& action);
 
 private:
     session_t& session_;

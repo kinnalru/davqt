@@ -215,7 +215,8 @@ void main_window_t::sync()
         return;
         
     static bool guard = false;
-    qDebug() << "main sync2 guard:" << guard << " enabled:" << settings().enabled() << "interval:" << interval;    
+    qDebug() << "main sync2 guard:" << guard << " enabled:" << settings().enabled() << "interval:" << interval;   
+    qDebug() << "main sync2 threads:" << sync_manager_t::pool()->activeThreadCount();
     
     if (settings().enabled() && !guard && interval> 0) {
         qDebug() << "main sync3";

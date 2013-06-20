@@ -45,16 +45,21 @@ public:
     Q_SLOT void cancell();
     bool is_closed() const;
     
-    std::vector<remote_res_t> get_resources(const QString& unescaped_path);
+    QList<remote_res_t> get_resources(const QString& unescaped_path);
     
     stat_t get(const QString& unescaped_path, int fd);
-    stat_t put(const QString& unescaped_path, int fd);
+    
+    /*! if etag isNull - there is NO file on server
+     *  if etag = "" - there is no etag used
+     *  if etag not isEmpty - use it to override file on serveer
+     */
+    stat_t put(const QString& unescaped_path, int fd, const QString& etag);
 
     void head(const QString& unescaped_path, QString& etag, qlonglong& mtime, quint64& length);
 
-    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems);
+    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems, const QString& etag);
     
-    void remove(const QString& unescaped_path);
+    void remove(const QString& unescaped_path, const QString& etag);
 
     stat_t mkcol(const QString& unescaped_path);
    
@@ -64,6 +69,9 @@ Q_SIGNALS:
     void get_progress(qint64 progress, qint64 total);
     void put_progress(qint64 progress, qint64 total);
 
+private:
+    void etag_check_workaround(const QString& unescaped_path, const QString& etag);
+    
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;

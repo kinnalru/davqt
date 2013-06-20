@@ -57,7 +57,12 @@ struct stat_t {
         size = data["size"].toULongLong();
     }
     
-    bool empty() const {return mtime == 0 && size == -1 && absolutepath.isEmpty();}
+    inline bool empty() const {return mtime == 0 && size == -1 && absolutepath.isEmpty();}
+    
+    inline bool operator==(const stat_t& other) const {
+        return etag == other.etag && absolutepath == other.absolutepath
+            && mtime == other.mtime && perms == other.perms && size == other.size;
+    }
     
     inline QVariantMap dump() const {
         QVariantMap data;
