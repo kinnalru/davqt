@@ -48,7 +48,7 @@ main_window_t::main_window_t(QWidget* parent)
     p_->ui.setupUi(this);
 
     
-    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked(bool)), this, SLOT(sync())));
+    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked(bool)), this, SLOT(force_sync())));
 
     
     QMenu* menu = new QMenu();
@@ -213,12 +213,18 @@ void main_window_t::sync()
     
     if (to_sync != 0)
         return;
-        
+     
+    if (settings().enabled() && interval> 0)
+        force_sync();
+}
+
+void main_window_t::force_sync()
+{
     static bool guard = false;
-    qDebug() << "main sync2 guard:" << guard << " enabled:" << settings().enabled() << "interval:" << interval;   
+    qDebug() << "main sync2 guard:" << guard << " enabled:" << settings().enabled();
     qDebug() << "main sync2 threads:" << sync_manager_t::pool()->activeThreadCount();
     
-    if (settings().enabled() && !guard && interval> 0) {
+    if (!guard) {
         qDebug() << "main sync3";
         guard = true;
         Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
@@ -231,6 +237,7 @@ void main_window_t::sync()
         p_->manager->update_status();
     }
 }
+
 
 void main_window_t::start_sync()
 {

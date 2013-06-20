@@ -53,6 +53,7 @@ public Q_SLOTS:
     void tray_activated(QSystemTrayIcon::ActivationReason);
 private:
     void action_finished(const action_t& action);
+    Q_SLOT void force_sync();
     void start_sync();
     
 private:
