@@ -513,6 +513,7 @@ void sync_manager_t::update_status()
         }
     };
     
+    QDir().mkpath(lf_);
     pool()->start(new runnable_t(updater));
 }
 

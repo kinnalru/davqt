@@ -9,6 +9,12 @@
 	<file>images/state-ok.png</file>
 	<file>images/state-pause.png</file>
 	<file>images/state-sync.png</file>
+	<file>images/settings.png</file>
+	<file>images/folder-cloud.png</file>
+	<file>images/folder-sync.png</file>
+	<file>images/folder-sync-off.png</file>
+	<file>images/folder-ok.png</file>
+	<file>images/folder-warning.png</file>
   </qresource>
   <qresource prefix="/images">
   </qresource>

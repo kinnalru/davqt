@@ -51,24 +51,33 @@ main_window_t::main_window_t(QWidget* parent)
     
     QMenu* menu = new QMenu();
 
-    ::connect(menu->addAction(QIcon("icons:prefs.png"), QObject::tr("Settings")), SIGNAL(triggered(bool)), [this] {
+    QAction* settings_a = menu->addAction(QIcon("icons:settings.png"), QObject::tr("Settings"));
+    p_->ui.settings->setDefaultAction(settings_a);
+    
+    ::connect(settings_a, SIGNAL(triggered(bool)), [this, settings_a] {
         preferences_dialog d(preferences_dialog::Auto, true, this);
-        d.setWindowTitle(tr("Settings"));
-        d.setWindowIcon(QIcon("icons:prefs.png"));
+        d.setWindowTitle(settings_a->text());
+        d.setWindowIcon(settings_a->icon());
         d.add_item(new main_settings_t());
         d.exec();
         restart();
     });
     
-    QAction* enabled = menu->addAction(QObject::tr("Enabled"));
-    enabled->setCheckable(true);
-    enabled->setChecked(settings().enabled());
-    
-    ::connect(enabled, SIGNAL(triggered(bool)), [this, enabled] {
-        settings().set_enabled(enabled->isChecked());
+    QAction* enabled_a = menu->addAction(QObject::tr("Enabled"));
+    enabled_a->setCheckable(true);
+    ::connect(enabled_a, SIGNAL(toggled (bool)), [this, enabled_a] {
+        settings().set_enabled(enabled_a->isChecked());
+        if (enabled_a->isChecked()) {
+            p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
+        } 
+        else {
+            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));
+        }
     });
 
-    connect(settings_impl_t::instance(), SIGNAL(enabled_changed(bool)), enabled, SLOT(setChecked(bool)));
+    Q_VERIFY(connect(settings_impl_t::instance(), SIGNAL(enabled_changed(bool)), enabled_a, SLOT(setChecked(bool))));
+    enabled_a->setChecked(settings().enabled());
+    
     
     ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
         qApp->exit(0);
@@ -124,11 +133,13 @@ void main_window_t::restart()
     
     Q_VERIFY(::connect(p_->manager, SIGNAL(sync_started()), [this] {
         p_->ui.status->setPixmap(QPixmap("icons:state-sync.png"));
+        p_->ui.status->setProperty("error", false);
         p_->ui.sync->setEnabled(false);
     }));
     
     Q_VERIFY(::connect(p_->manager, SIGNAL(sync_finished()), [this] {
-        p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
+        if (!p_->ui.status->property("error").toBool())
+            p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
         p_->ui.sync->setEnabled(true);
     }));
     
@@ -142,7 +153,7 @@ void main_window_t::restart()
     
 //     Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
     
-    QTimer::singleShot(std::max(settings().interval() * 1000, 10000), this, SLOT(sync()));
+    QTimer::singleShot(1000, this, SLOT(sync()));
 }
 
 
@@ -165,6 +176,26 @@ void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
 
 void main_window_t::sync()
 {
+    QTimer::singleShot(1000, this, SLOT(sync()));    
+    const int interval = settings().interval();
+    const QDateTime last = settings().last_sync();
+    
+    int to_sync;
+    
+    if (last.isValid()) {
+        to_sync = std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0);
+    } 
+    else {
+        to_sync = -1;
+    }
+    
+    p_->ui.to_sync->setText(tr("(to sync: %1s)").arg(to_sync));
+    p_->ui.last_sync->setText(tr("Last sync: %1").arg(last.toString()));
+
+    
+    if (to_sync != 0)
+        return;
+        
     static bool guard = false;
     if (settings().enabled() && !guard && settings().interval() > 0) {
         guard = true;
@@ -173,11 +204,10 @@ void main_window_t::sync()
         }));
         Q_VERIFY(::connectOnce(p_->manager, SIGNAL(sync_finished()), [this, &guard] {
             guard = false;
+            settings().set_last_sync(QDateTime::currentDateTime());
         }));   
         p_->manager->update_status();
     }
-    
-    QTimer::singleShot(std::max(settings().interval() * 1000, 10000), this, SLOT(sync()));
 }
 
 void main_window_t::start_sync()
@@ -320,6 +350,8 @@ void main_window_t::action_error(const action_t& action, const QString& message)
     if (!it) {
         QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.local_file << message);
     }
+    p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));  
+    p_->ui.status->setProperty("error", true);
 }
 
 void main_window_t::action_progress(const action_t& action, qint64 progress, qint64 total)

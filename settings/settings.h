@@ -4,6 +4,8 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include <QObject>
+#include <QDebug>
+#include <QDateTime>
 
 #define GENERATE_PARAM(name, type, def) \
     type name() const {\
@@ -15,6 +17,7 @@
         if (this != instance()) {\
             connect(this, SIGNAL(name##_changed(type)), instance(), SIGNAL(name##_changed(type)));\
         }\
+        qDebug() << "here:" << #name << value;\
         Q_EMIT name##_changed(value);\
     }\
     void reset_##name() {\
@@ -43,6 +46,7 @@ public:
     GENERATE_PARAM(remotefolder, QString, "/");
     GENERATE_PARAM(localfolder, QString, ".davqtfolder");
     GENERATE_PARAM(enabled, bool, false);
+    GENERATE_PARAM(last_sync, QDateTime, QDateTime());
     
 Q_SIGNALS:
     void username_changed(const QString&);
@@ -52,6 +56,7 @@ Q_SIGNALS:
     void remotefolder_changed(const QString&);
     void localfolder_changed(const QString&);
     void enabled_changed(bool);
+    void last_sync_changed(QDateTime);
     
 protected:
     std::unique_ptr<QSettings> s_;

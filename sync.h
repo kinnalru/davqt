@@ -21,8 +21,6 @@
 #ifndef DAVQT_SYNC_H
 #define DAVQT_SYNC_H
 
-#include <QList>
-#include <QRunnable>
 #include <QThreadPool>
 
 #include "types.h"
