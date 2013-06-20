@@ -529,6 +529,8 @@ void sync_manager_t::sync(const Actions& act)
         try {
             session_t session(0, conn_.schema, conn_.host, conn_.port);
         
+            Q_VERIFY(connect(this, SIGNAL(close1()), &session, SLOT(close())));
+            
             session.set_auth(conn_.login, conn_.password);
             session.set_ssl();
             session.open();

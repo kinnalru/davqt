@@ -22,6 +22,8 @@
 #include <QProgressBar>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QMessageBox>
+#include <qprogressdialog.h>
 
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
@@ -60,7 +62,22 @@ main_window_t::main_window_t(QWidget* parent)
         d.setWindowIcon(settings_a->icon());
         d.add_item(new main_settings_t());
         d.exec();
-        restart();
+        
+        if (p_->manager->is_busy()) {
+            auto b = QMessageBox::warning(this, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"), QMessageBox::Yes | QMessageBox::No);
+            if (b == QMessageBox::Yes) {
+                QProgressDialog waiter(tr("Waiting for sync finished..."), tr("Break"), 0, 0);
+                Q_VERIFY(connect(p_->manager, SIGNAL(ready()), &waiter, SLOT(reset())));
+                waiter.exec();
+                if (waiter.wasCanceled()) {
+                    qDebug() << "zhopa";
+                }
+            } else {
+                p_->manager->stop();
+            }
+        }
+        
+//         restart();
     });
     
     QAction* enabled_a = menu->addAction(QObject::tr("Enabled"));
@@ -347,9 +364,15 @@ void main_window_t::action_error(const action_t& action, const QString& message)
     Q_ASSERT(it);
     it->setText(1, tr("Error"));
     action_finished(action);    
+    
+    it->setTextColor(0, Qt::red);
+    it->parent()->insertChild(0, it);
+    it->treeWidget()->insertTopLevelItem(0, it->parent());
+    
     it = find_item(p_->ui.errors, action.local_file);
     if (!it) {
         QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.local_file << message);
+        p_->ui.errors->addTopLevelItem(item);
     }
     p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));  
     p_->ui.status->setProperty("error", true);
@@ -370,6 +393,9 @@ void main_window_t::action_finished(const action_t& action)
 {
     auto it = find_item(p_->ui.actions, action.local_file);
     Q_ASSERT(it);    
+    
+    it->setTextColor(0, QPalette().color(it->treeWidget()->foregroundRole()));
+    
     if (QProgressBar* pb = get_pb(p_->ui.actions, it->parent())) {
         pb->setValue(pb->value() + 1);
     }

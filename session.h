@@ -41,6 +41,7 @@ public:
     void set_auth(const QString& user, const QString& password);
     void set_ssl();
     void open();    
+    Q_SLOT void close();
     
     std::vector<remote_res_t> get_resources(const QString& unescaped_path);
     

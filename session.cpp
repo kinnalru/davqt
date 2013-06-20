@@ -333,6 +333,12 @@ void session_t::open()
     }
 }
 
+void session_t::close()
+{
+    qDebug() << "!!!!!CLOSE!";
+    ne_close_connection(p_->session.get());
+}
+
 std::vector<remote_res_t> session_t::get_resources(const QString& unescaped_path) {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);  
     

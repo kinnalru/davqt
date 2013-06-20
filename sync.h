@@ -22,6 +22,7 @@
 #define DAVQT_SYNC_H
 
 #include <QThreadPool>
+#include <QDebug>
 
 #include "types.h"
 #include "database.h"
@@ -62,6 +63,9 @@ public Q_SLOTS:
     void update_status();
     void sync(const Actions& act);
     
+    void stop() {
+        qDebug() << "before close"; Q_EMIT close1(); qDebug() << "after close"; }
+    
     bool is_busy() const;
     
 Q_SIGNALS:
@@ -81,6 +85,8 @@ Q_SIGNALS:
 
     
     void progress(const action_t& action, qint64 progress, qint64 total);
+    
+    void close1();
 
 private:
     const connection conn_;
