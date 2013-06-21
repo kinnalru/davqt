@@ -460,6 +460,10 @@ thread_manager_t::thread_manager_t(QObject* parent, connection conn, const QStri
     : QObject(parent)
     , p_(new Pimpl(conn, localfolder, remotefolder))
 {
+    static int r1 = qRegisterMetaType<action_t>("action_t");
+    static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
+    static int r3 = qRegisterMetaType<Actions>("Actions");    
+    
     for (int i = 0; i < QThread::idealThreadCount(); ++i) {
         QThread* th = new QThread(this);
         QTimer* timer = new QTimer(0);
@@ -568,34 +572,24 @@ void thread_manager_t::stop()
 
 void thread_manager_t::update_thread()
 {
-    qDebug() << "update_thread TH currentThread:" << QThread::currentThreadId();
     try {
-        qDebug() << "1";
         session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-        qDebug() << "2";
         {
-            qDebug() << "3";
             QMutexLocker locker(&p_->mx);
-            qDebug() << "4";
             Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
-            qDebug() << "5";
             if (p_->stop) {
-                qDebug() << "6";
                 p_->updater->quit();
                 p_->updater->deleteLater();
                 p_->updater = NULL;        
                 Q_EMIT sync_finished();
                 return;
             }
-            qDebug() << "7";
         }
-        qDebug() << "8";
+        
         session.set_auth(p_->conn.login, p_->conn.password);
-        qDebug() << "9";
         session.set_ssl();
-        qDebug() << "10";
         session.open();
-        qDebug() << "11";
+
         const QList<action_t> actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
         {
             QMutexLocker locker(&p_->mx);        
@@ -617,14 +611,11 @@ void thread_manager_t::update_thread()
 
 void thread_manager_t::sync_thread()
 {
-    qDebug() << "sync_thread TH currentThread:" << QThread::currentThreadId();
     auto take_action = [this] () {
         action_t c;
         QMutexLocker locker(&p_->mx);
         
-        qDebug() << "sync_thread 1";
         p_->dataexists.wait(&p_->mx);
-        qDebug() << "sync_thread 2";
         if (!p_->todo.isEmpty()) {
             
             if (p_->in_progress.isEmpty()) {
@@ -634,7 +625,6 @@ void thread_manager_t::sync_thread()
             c = p_->todo.takeFirst();
             p_->in_progress << c;
         }
-        qDebug() << "sync_thread 3";
         return c;
     };
     
@@ -659,9 +649,7 @@ void thread_manager_t::sync_thread()
     Q_FOREVER {
         if (p_->abort) break;
         current = take_action();
-        qDebug() << "sync_thread 4";
         if (p_->abort) break;
-        qDebug() << "sync_thread 5";
         
         if (current.empty()) continue;
         
@@ -700,6 +688,8 @@ void thread_manager_t::sync_thread()
             if (p_->abort) break;
             if (session.is_closed()) break;
             
+            adapter.set_action(current);
+            
             try {
                 Q_EMIT action_started(current);
                 processor.process(current);
@@ -716,7 +706,6 @@ void thread_manager_t::sync_thread()
             current = action_completed(current);
         } while (!current.empty());
     }
-    qDebug() << "sync_thread finished";
     QThread::currentThread()->quit();
 }
 

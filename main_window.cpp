@@ -235,13 +235,11 @@ void main_window_t::message_activated()
 
 void main_window_t::sync()
 {
-    qDebug() << "timer sync 1";
     const int interval = settings().interval();
     const QDateTime last = settings().last_sync();
     
     int to_sync;
     
-    qDebug() << "timer sync 2";
     if (last.isValid()) {
         to_sync = std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0);
     } 
@@ -249,19 +247,14 @@ void main_window_t::sync()
         to_sync = 0;
     }
     
-    qDebug() << "timer sync 3";
     p_->ui.to_sync->setText(tr("(to sync: %1s)").arg(to_sync));
     p_->ui.last_sync->setText(tr("Last sync: %1").arg(last.toString()));
 
-    qDebug() << "timer sync 4:" << to_sync;
     if (to_sync != 0)
         return;
     
-    qDebug() << "timer sync 5";
-    
     if (settings().enabled() && interval> 0)
         force_sync();
-    qDebug() << "timer sync 6";
 }
 
 void main_window_t::force_sync()

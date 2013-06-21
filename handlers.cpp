@@ -414,6 +414,8 @@ action_processor_t::action_processor_t(session_t& session, db_t& db, Comparer co
 
 void action_processor_t::process(const action_t& action)
 {
+    Q_ASSERT(!action.empty());
+    
     auto h = handlers_.find(action.type);
     if (h != handlers_.end()) {
         qDebug() << "\n >>> processing action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
