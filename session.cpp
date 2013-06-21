@@ -308,10 +308,14 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
         resource.exec = remote_res_t::executable;
     }
     
-    resource.name = QFileInfo(resource.path).fileName();
+    if (resource.path.right(1) == "/") resource.path = resource.path.left(resource.path.length() - 1);
     
-    if (resource.name.isEmpty())
-        resource.name = ".";
+    if (QFileInfo(ctx->path).absoluteFilePath() == QFileInfo(resource.path).absoluteFilePath()) {
+        resource.name = ".";        
+    }
+    else {
+        resource.name = QFileInfo(resource.path).fileName();        
+    }
     
     ctx->resources << resource;
 }
