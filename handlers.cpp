@@ -89,6 +89,9 @@ struct download_handler : base_handler_t {
     void do_request(session_t& session, db_t& db, const action_t& action) const {
         const QString tmppath = action.local_file + db_t::tmpprefix;
         
+        if (QFileInfo(tmppath).exists())
+            throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
+        
         QFile tmpfile(tmppath);
         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
             throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
@@ -402,7 +405,10 @@ action_processor_t::action_processor_t(session_t& session, db_t& db, Comparer co
         {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed
         {action_t::upload_dir, upload_dir_handler()},
         {action_t::download_dir, download_dir_handler()},
-        {action_t::unchanged, [] (session_t& session, db_t& db, const action_t& action) {}}
+        {action_t::unchanged, [] (session_t& session, db_t& db, const action_t& action) {}},
+        {action_t::error, [] (session_t& session, db_t& db, const action_t& action) {
+            throw qt_exception_t(QObject::tr("Action precondition failed"));
+        }}
     };
 }
 
@@ -415,7 +421,6 @@ void action_processor_t::process(const action_t& action)
         qDebug() << " >>> completed";
     }
     else {
-        if (action.type == action_t::error) return;
         qCritical() << "unhandled action type!:" << action.type;
         Q_ASSERT(!"unhandled action type!");
     }

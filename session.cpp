@@ -255,7 +255,7 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     
     remote_res_t resource;
     
-    resource.path = ne_path_unescape(uri->path);
+    resource.path = QString::fromUtf8(ne_path_unescape(uri->path));
     
     const char *data;
 
@@ -308,12 +308,9 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
         resource.exec = remote_res_t::executable;
     }
     
-    std::shared_ptr<char> path(strdup(qPrintable(resource.path)), free);
-    resource.name = basename(path.get());
+    resource.name = QFileInfo(resource.path).fileName();
     
-    std::shared_ptr<char> qpath(strdup(qPrintable(ctx->path)), free);
-    
-    if (resource.name == QString(basename(qpath.get()))) 
+    if (resource.name.isEmpty())
         resource.name = ".";
     
     ctx->resources << resource;

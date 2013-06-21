@@ -517,6 +517,8 @@ QMutex syncmx;
 
 void sync_manager_t::sync(const Actions& act)
 {
+    if (act.isEmpty()) return;
+    
     Q_EMIT sync_started();
     
     //actions are shared between threads - dont forget safe reset

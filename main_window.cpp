@@ -39,6 +39,11 @@ struct main_window_t::Pimpl {
     Ui_main ui;
     sync_manager_t* manager;
     Actions actions;
+    QSystemTrayIcon* tray;
+    
+    QAction* settings_a;
+    QAction* sync_a;
+    QAction* enabled_a;
 };
 
 main_window_t::main_window_t(QWidget* parent)
@@ -47,19 +52,32 @@ main_window_t::main_window_t(QWidget* parent)
 {
     p_->ui.setupUi(this);
 
-    
-    Q_VERIFY(connect(p_->ui.sync, SIGNAL(clicked(bool)), this, SLOT(force_sync())));
-
-    
     QMenu* menu = new QMenu();
-
-    QAction* settings_a = menu->addAction(QIcon("icons:settings.png"), QObject::tr("Settings"));
-    p_->ui.settings->setDefaultAction(settings_a);
+    p_->tray = new QSystemTrayIcon(QIcon("icons:state-sync.png"), this);
+    p_->tray->setVisible(true);    
+    p_->tray->setContextMenu(menu);
+    connect(p_->tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
+    connect(p_->tray, SIGNAL(messageClicked()), this, SLOT(message_activated()));
     
-    ::connect(settings_a, SIGNAL(triggered(bool)), [this, settings_a] {
+    p_->settings_a = menu->addAction(QIcon("icons:settings.png"), QObject::tr("Settings"));
+    p_->sync_a = menu->addAction(QIcon("icons:sync.png"), QObject::tr("Sync"));
+    p_->enabled_a = menu->addAction(QObject::tr("Enabled"));
+    
+    ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
+        qApp->exit(0);
+    });
+    
+    Q_VERIFY(connect(p_->sync_a, SIGNAL(triggered(bool)), this, SLOT(force_sync())));
+    Q_VERIFY(connect(settings_impl_t::instance(), SIGNAL(enabled_changed(bool)), p_->enabled_a, SLOT(setChecked(bool))));
+    
+    p_->ui.sync->setDefaultAction(p_->sync_a);
+    p_->ui.settings->setDefaultAction(p_->settings_a);
+
+    
+    ::connect(p_->settings_a, SIGNAL(triggered(bool)), [this] {
         preferences_dialog d(preferences_dialog::Auto, true, this);
-        d.setWindowTitle(settings_a->text());
-        d.setWindowIcon(settings_a->icon());
+        d.setWindowTitle(p_->settings_a->text());
+        d.setWindowIcon(p_->settings_a->icon());
         d.add_item(new main_settings_t());
         d.exec();
         
@@ -80,32 +98,20 @@ main_window_t::main_window_t(QWidget* parent)
         restart();
     });
     
-    QAction* enabled_a = menu->addAction(QObject::tr("Enabled"));
-    enabled_a->setCheckable(true);
-    ::connect(enabled_a, SIGNAL(toggled (bool)), [this, enabled_a] {
-        settings().set_enabled(enabled_a->isChecked());
-        if (enabled_a->isChecked()) {
-            p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
+    p_->enabled_a->setCheckable(true);
+    ::connect(p_->enabled_a, SIGNAL(toggled (bool)), [this] {
+        settings().set_enabled(p_->enabled_a->isChecked());
+        if (p_->enabled_a->isChecked()) {
+            set_state(waiting);
         } 
         else {
-            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
-            p_->manager->stop();
+            set_state(disabled);
         }
     });
 
-    Q_VERIFY(connect(settings_impl_t::instance(), SIGNAL(enabled_changed(bool)), enabled_a, SLOT(setChecked(bool))));
-    enabled_a->setChecked(settings().enabled());
+    p_->enabled_a->setChecked(settings().enabled());
     
-    
-    ::connect(menu->addAction(QIcon("icons:exit.png"), QObject::tr("Quit")), SIGNAL(triggered(bool)), [] {
-        qApp->exit(0);
-    });
 
-    QSystemTrayIcon* tray = new QSystemTrayIcon(QIcon("icons:sync.png"), this);
-    tray->setVisible(true);    
-    tray->setContextMenu(menu);
-    connect(tray, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(tray_activated(QSystemTrayIcon::ActivationReason)));
-    
     restart();
     QTimer* timer = new QTimer(this);
     Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(sync())));
@@ -150,29 +156,6 @@ void main_window_t::restart()
     Q_VERIFY(connect(p_->manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
     Q_VERIFY(connect(p_->manager, SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
     Q_VERIFY(connect(p_->manager, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-    
-    
-    Q_VERIFY(::connect(p_->manager, SIGNAL(sync_started()), [this] {
-        p_->ui.status->setPixmap(QPixmap("icons:state-sync.png"));
-        p_->ui.status->setProperty("error", false);
-        p_->ui.sync->setEnabled(false);
-    }));
-    
-    Q_VERIFY(::connect(p_->manager, SIGNAL(sync_finished()), [this] {
-        if (!p_->ui.status->property("error").toBool())
-            p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
-        p_->ui.sync->setEnabled(true);
-    }));
-    
-    
-    
-//     Q_VERIFY(::connect(p_->manager, SIGNAL(busy()), [this] {p_->ui.update->setEnabled(false);}));
-//     Q_VERIFY(::connect(p_->manager, SIGNAL(ready()), [this] {p_->ui.update->setEnabled(true);}));
-//     
-//     Q_VERIFY(::connect(p_->manager, SIGNAL(busy()), [this] {p_->ui.sync->setEnabled(false);}));
-//     Q_VERIFY(::connect(p_->manager, SIGNAL(ready()), [this] {p_->ui.sync->setEnabled(true);}));
-    
-//     Q_VERIFY(connect(p_->ui.update, SIGNAL(clicked()), p_->manager, SLOT(update_status())));
 }
 
 
@@ -190,6 +173,47 @@ void main_window_t::tray_activated(QSystemTrayIcon::ActivationReason reason) {
         show();
         raise();
         activateWindow();
+    }
+}
+
+QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
+    QProgressBar* pb = qobject_cast<QProgressBar*>(tree->itemWidget(item, 2));
+//     Q_ASSERT(pb);
+    return pb;
+}
+
+QList<QTreeWidgetItem*> all_items(const QTreeWidget* tree) {
+    QList<QTreeWidgetItem*> ret;
+
+    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* it = tree->topLevelItem(i);
+        ret << it;
+        for (int c = 0; c < it->childCount(); ++ c) {
+            ret << it->child(c);
+        }
+    }
+    return ret;
+}
+
+QTreeWidgetItem* find_item(const QTreeWidget* tree, const QString& text) {
+    Q_FOREACH(auto it, all_items(tree)) {
+        if (it->text(0) == text) return it;
+    }
+    return NULL;
+}
+
+void main_window_t::message_activated()
+{
+    const QString local_file = p_->tray->property("file").toString();
+    tray_activated(QSystemTrayIcon::QSystemTrayIcon::Trigger);
+    if (!local_file.isNull()) {
+        auto it = find_item(p_->ui.actions, local_file);
+        Q_ASSERT(it);
+        p_->ui.actions->setCurrentItem(it);
+        
+        it = find_item(p_->ui.errors, local_file);
+        Q_ASSERT(it);
+        p_->ui.errors->setCurrentItem(it);
     }
 }
 
@@ -242,33 +266,6 @@ void main_window_t::force_sync()
 void main_window_t::start_sync()
 {
     p_->manager->sync(p_->actions);
-}
-
-
-QProgressBar* get_pb(QTreeWidget* tree, QTreeWidgetItem* item) {
-    QProgressBar* pb = qobject_cast<QProgressBar*>(tree->itemWidget(item, 2));
-//     Q_ASSERT(pb);
-    return pb;
-}
-
-QList<QTreeWidgetItem*> all_items(const QTreeWidget* tree) {
-    QList<QTreeWidgetItem*> ret;
-
-    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem* it = tree->topLevelItem(i);
-        ret << it;
-        for (int c = 0; c < it->childCount(); ++ c) {
-            ret << it->child(c);
-        }
-    }
-    return ret;
-}
-
-QTreeWidgetItem* find_item(const QTreeWidget* tree, const QString& text) {
-    Q_FOREACH(auto it, all_items(tree)) {
-        if (it->text(0) == text) return it;
-    }
-    return NULL;
 }
 
 void main_window_t::status_updated(const Actions& actions)
@@ -392,8 +389,10 @@ void main_window_t::action_error(const action_t& action, const QString& message)
         QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.local_file << message);
         p_->ui.errors->addTopLevelItem(item);
     }
-    p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));  
-    p_->ui.status->setProperty("error", true);
+    
+    p_->tray->showMessage(tr("Error when sync file %1").arg(action.local_file), message, QSystemTrayIcon::Warning, 7000);
+    p_->tray->setProperty("file", action.local_file);
+    set_state(error);
 }
 
 void main_window_t::action_progress(const action_t& action, qint64 progress, qint64 total)
@@ -426,14 +425,74 @@ void main_window_t::action_finished(const action_t& action)
 
 void main_window_t::sync_started()
 {
-    qDebug() << "! =========== started!";
+    set_state(syncing);
 }
 
 void main_window_t::sync_finished()
 {
-    qDebug() << "! =========== completed";
+    set_state(complete);
 }
 
+void main_window_t::set_state(main_window_t::gui_state_e state)
+{
+    static gui_state_e last_state;
+    const bool is_error = p_->ui.status->property("error").toBool();
+    qDebug() << "is_error:" << is_error;
+    switch(state) {
+    case waiting: {
+        qDebug() << "waitings";
+        p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
+        p_->tray->setIcon(QIcon("icons:state-pause.png"));
+        break;
+    }
+    case disabled: {
+        qDebug() << "disabled";
+        if (is_error) {
+            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
+            p_->tray->setIcon(QIcon("icons:state-error.png"));
+        }
+        else {
+            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
+            p_->tray->setIcon(QIcon("icons:state-offline.png"));
+        }
+        p_->manager->stop();        
+        break;
+    }
+    case syncing: {
+        qDebug() << "syncing";
+        p_->ui.status->setProperty("error", false);        
+        p_->ui.status->setPixmap(QPixmap("icons:state-sync.png"));
+        p_->tray->setIcon(QIcon("icons:state-sync.png"));        
+        p_->sync_a->setEnabled(false);
+        break;
+    }
+    case complete: {
+        qDebug() << "complete";
+        if (is_error) {
+            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
+            p_->tray->setIcon(QIcon("icons:state-error.png"));
+        }
+        else {
+            p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
+            p_->tray->setIcon(QIcon("icons:state-ok.png"));
+        }
+        p_->sync_a->setEnabled(true);
+        
+        break;
+    }
+    case error: {
+        qDebug() << "error";
+        if (last_state != syncing) {
+            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
+            p_->tray->setIcon(QIcon("icons:state-error.png"));
+        }
+        p_->ui.status->setProperty("error", true);
+        break;
+    }
+    default: Q_ASSERT(!"unhandled state");
+    }
+    last_state = state;
+}
 
 
 

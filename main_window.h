@@ -51,10 +51,21 @@ public Q_SLOTS:
     void action_progress(const action_t& action, qint64 progress, qint64 total);        
 
     void tray_activated(QSystemTrayIcon::ActivationReason);
+    void message_activated();
 private:
     void action_finished(const action_t& action);
     Q_SLOT void force_sync();
     void start_sync();
+    
+    enum gui_state_e {
+        disabled,
+        waiting,
+        syncing,
+        complete,
+        error
+    };
+    
+    void set_state(gui_state_e state);
     
 private:
     struct Pimpl;
