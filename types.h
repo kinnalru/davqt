@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QVariant>
+#include <boost/concept_check.hpp>
 
 /// describes state of local resource
 typedef QFileInfo local_res_t;
@@ -127,6 +128,14 @@ struct action_t {
     {}
 
     action_t() {}
+    
+    inline bool empty() const {
+        return local_file.isEmpty() && remote_file.isEmpty();
+    }
+    
+    inline bool operator==(const action_t& other) const {
+        return type == other.type && local_file == other.local_file && remote_file == other.remote_file;
+    }
     
     QString local_file;
     QString remote_file;

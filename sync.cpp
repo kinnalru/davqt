@@ -16,6 +16,7 @@
     License along with this library; if not, write to the Free Software
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
+#include <functional>
 
 #include <QDateTime>
 #include <QDebug>
@@ -408,6 +409,15 @@ QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QStrin
     return actions;
 }
 
+struct runnable_t : public QRunnable {
+    template <typename Function>
+    runnable_t(Function func) : func_(func) {};
+    virtual ~runnable_t() {}
+    
+    virtual void run () {func_();}
+    std::function<void ()> func_;
+};
+
 template <typename Function>
 void run_in_thread(QThread* th, Function func) {
     QTimer* timer = new QTimer(0);
@@ -422,6 +432,301 @@ void run_in_thread(QThread* th, Function func) {
 
     timer->moveToThread(th);
 }
+
+struct thread_manager_t::Pimpl {
+    
+    Pimpl(thread_manager_t::connection conn, const QString& lf, const QString& rf)
+        : conn(conn), lf(lf), rf(rf), abort(false), updater(NULL), stop(false)
+        , localdb(lf + "/" + db_t::prefix + "/db", lf)
+    {}
+    
+    const connection conn;
+    const QString lf;
+    const QString rf;
+    db_t localdb;    
+    
+    QThread* updater;
+    QList<QThread*> threads;
+    volatile bool stop;
+    volatile bool abort;
+    
+    QMutex mx;
+    QWaitCondition dataexists;
+    Actions todo;
+    Actions in_progress;
+};
+
+thread_manager_t::thread_manager_t(QObject* parent, connection conn, const QString& localfolder, const QString& remotefolder)
+    : QObject(parent)
+    , p_(new Pimpl(conn, localfolder, remotefolder))
+{
+    for (int i = 0; i < QThread::idealThreadCount(); ++i) {
+        QThread* th = new QThread(this);
+        QTimer* timer = new QTimer(0);
+        timer->setInterval(0);
+        timer->setSingleShot(true);
+        Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(sync_thread()), Qt::DirectConnection));
+        Q_VERIFY(connect(timer, SIGNAL(timeout()), timer, SLOT(deleteLater())));          
+        Q_VERIFY(connect(th, SIGNAL(started()), timer, SLOT(start()))); 
+        timer->moveToThread(th);
+        p_->threads << th;
+        th->start();
+    }
+}
+
+thread_manager_t::~thread_manager_t()
+{
+    {
+        QMutexLocker locker(&p_->mx);
+        p_->todo.clear();
+        p_->stop = true;
+        p_->abort = true;
+        Q_EMIT need_stop();
+        p_->dataexists.wakeAll();
+    }
+    
+    Q_FOREACH(QThread* th, p_->threads) {
+        th->wait(1000);
+    }
+    Q_FOREACH(QThread* th, p_->threads) {
+        th->quit();
+    }
+    Q_FOREACH(QThread* th, p_->threads) {
+        if (th->isRunning()) {
+            th->wait(1000);                       
+            th->terminate();
+        }
+        
+        th->wait(1000);
+    }
+    
+    if (p_->updater) {
+        p_->updater->wait(1000);
+        p_->updater->quit();  
+        if (p_->updater->isRunning()) {
+            p_->updater->wait(1000);                       
+            p_->updater->terminate();
+        }
+        
+        p_->updater->wait(1000);        
+    }
+}
+
+bool thread_manager_t::is_busy()
+{
+    return !p_->todo.isEmpty() && !p_->in_progress.isEmpty() || p_->updater;
+}
+
+void thread_manager_t::update_status()
+{
+    Q_VERIFY(!p_->updater);
+    
+    qDebug() << "update_status currentThread:" << QThread::currentThreadId();
+    
+    QDir().mkpath(p_->lf);
+    p_->updater = new QThread(this);
+    QTimer* timer = new QTimer(0);
+    timer->setInterval(0);
+    timer->setSingleShot(true);
+    Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(update_thread()), Qt::DirectConnection));
+    Q_VERIFY(connect(timer, SIGNAL(timeout()), timer, SLOT(deleteLater())));    
+    Q_VERIFY(connect(p_->updater, SIGNAL(started()), timer, SLOT(start()))); 
+    timer->moveToThread(p_->updater);    
+    Q_EMIT sync_started();
+    p_->updater->start();
+}
+
+void thread_manager_t::start(const Actions& act)
+{
+    QMutexLocker locker(&p_->mx);
+    Q_ASSERT(p_->todo.isEmpty());
+    Q_ASSERT(p_->in_progress.isEmpty());
+    
+    qDebug() << "start currentThread:" << QThread::currentThreadId();
+    p_->todo = act;
+    p_->dataexists.wakeAll();
+}
+
+void thread_manager_t::stop()
+{
+    bool wait = false;
+    {
+        QMutexLocker locker(&p_->mx);
+        p_->stop = true;        
+        p_->todo.clear();
+        wait = !p_->in_progress.isEmpty();
+        if (wait)
+            Q_EMIT need_stop();
+    }
+    if (wait) {
+        QEventLoop loop;
+        Q_VERIFY(connect(this, SIGNAL(sync_finished()), &loop, SLOT(quit())));
+        loop.exec();
+    }
+    p_->stop = false;
+}
+
+void thread_manager_t::update_thread()
+{
+    qDebug() << "update_thread TH currentThread:" << QThread::currentThreadId();
+    try {
+        qDebug() << "1";
+        session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+        qDebug() << "2";
+        {
+            qDebug() << "3";
+            QMutexLocker locker(&p_->mx);
+            qDebug() << "4";
+            Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
+            qDebug() << "5";
+            if (p_->stop) {
+                qDebug() << "6";
+                p_->updater->quit();
+                p_->updater->deleteLater();
+                p_->updater = NULL;        
+                Q_EMIT sync_finished();
+                return;
+            }
+            qDebug() << "7";
+        }
+        qDebug() << "8";
+        session.set_auth(p_->conn.login, p_->conn.password);
+        qDebug() << "9";
+        session.set_ssl();
+        qDebug() << "10";
+        session.open();
+        qDebug() << "11";
+        const QList<action_t> actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
+        {
+            QMutexLocker locker(&p_->mx);        
+            if (!p_->stop)
+                Q_EMIT status_updated(actions);
+        }
+    } 
+    catch (const std::exception& e) {
+        QMutexLocker locker(&p_->mx);        
+        if (!p_->stop)
+            Q_EMIT status_error(e.what());
+    }
+    
+    p_->updater->quit();
+    p_->updater->deleteLater();
+    p_->updater = NULL;
+    Q_EMIT sync_finished();
+}
+
+void thread_manager_t::sync_thread()
+{
+    qDebug() << "sync_thread TH currentThread:" << QThread::currentThreadId();
+    auto take_action = [this] () {
+        action_t c;
+        QMutexLocker locker(&p_->mx);
+        
+        qDebug() << "sync_thread 1";
+        p_->dataexists.wait(&p_->mx);
+        qDebug() << "sync_thread 2";
+        if (!p_->todo.isEmpty()) {
+            
+            if (p_->in_progress.isEmpty()) {
+                Q_EMIT sync_started();
+            }
+            
+            c = p_->todo.takeFirst();
+            p_->in_progress << c;
+        }
+        qDebug() << "sync_thread 3";
+        return c;
+    };
+    
+    auto action_completed = [this] (const action_t& action) {
+        action_t c;
+        QMutexLocker locker(&p_->mx);
+        
+        Q_VERIFY(p_->in_progress.removeOne(action));
+        
+        if (!p_->todo.isEmpty()) {
+            c = p_->todo.takeFirst();
+            p_->in_progress << c;            
+        } 
+        else if (p_->in_progress.isEmpty()) {
+            Q_EMIT sync_finished();
+        }
+        return c;
+    };
+
+    action_t current;
+        
+    Q_FOREVER {
+        if (p_->abort) break;
+        current = take_action();
+        qDebug() << "sync_thread 4";
+        if (p_->abort) break;
+        qDebug() << "sync_thread 5";
+        
+        if (current.empty()) continue;
+        
+        session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+        
+        {
+            QMutexLocker locker(&p_->mx);
+            if (p_->stop) {
+                current = action_t();
+                continue;
+            }
+            Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
+        }
+        
+        session.set_auth(p_->conn.login, p_->conn.password);
+        session.set_ssl();
+        session.open();
+    
+        progress_adapter_t adapter;
+        
+        Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+        Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+        Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
+        
+        action_processor_t processor(session, p_->localdb,
+            [] (action_processor_t::resolve_ctx& ctx) {
+                return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+            },
+            [] (action_processor_t::resolve_ctx& ctx) {
+                ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
+                return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+            });
+        
+        do {
+            if (p_->stop) break;
+            if (p_->abort) break;
+            if (session.is_closed()) break;
+            
+            try {
+                Q_EMIT action_started(current);
+                processor.process(current);
+                if (session.is_closed()) break;
+                Q_EMIT action_success(current);
+            }
+            catch(const qt_exception_t& e) {
+                Q_EMIT action_error(current, e.message());
+            }
+            catch(const std::exception& e) {
+                Q_EMIT action_error(current, e.what());
+            }
+            
+            current = action_completed(current);
+        } while (!current.empty());
+    }
+    qDebug() << "sync_thread finished";
+    QThread::currentThread()->quit();
+}
+
+
+
+
+
+
+/*
+
 
 thread_pool_t::thread_pool_t(QObject* parent)
     : QThreadPool(parent)
@@ -482,14 +787,7 @@ thread_pool_t* sync_manager_t::pool()
     return pool_s;
 }
 
-struct runnable_t : public QRunnable {
-    template <typename Function>
-    runnable_t(Function func) : func_(func) {};
-    virtual ~runnable_t() {}
-    
-    virtual void run () {func_();}
-    std::function<void ()> func_;
-};
+
 
 void sync_manager_t::update_status()
 {
@@ -620,7 +918,7 @@ void sync_manager_t::stop()
         loop.exec();                        
         qDebug() << "loop2";
     }
-}
+}*/
 
 
 

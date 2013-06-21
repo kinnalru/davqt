@@ -27,6 +27,52 @@
 #include "types.h"
 #include "database.h"
 
+class thread_manager_t : public QObject {
+    Q_OBJECT
+public:
+    struct connection {
+        QString schema;
+        QString host;
+        quint32 port;
+        QString login;
+        QString password;
+    };
+    
+    thread_manager_t(QObject* parent, connection conn, const QString& localfolder, const QString& remotefolder);
+    virtual ~thread_manager_t();
+    
+    bool is_busy();
+    
+public Q_SLOTS:
+    void update_status();
+    void start(const Actions& act);
+    void stop();
+    
+Q_SIGNALS:
+    void status_updated(const Actions& actions);
+    void status_error(const QString& error);
+    
+    void sync_started();
+    void sync_finished();
+    
+    void action_started(const action_t& action);
+    void action_success(const action_t& action);
+    void action_error(const action_t& action, const QString& error);
+    
+    void progress(const action_t& action, qint64 progress, qint64 total);
+    
+    void need_stop();
+    
+private:
+    Q_SLOT void sync_thread();
+    Q_SLOT void update_thread();
+    
+private:
+    struct Pimpl;
+    std::unique_ptr<Pimpl> p_;
+};
+
+/*
 class thread_pool_t : public QThreadPool {
     Q_OBJECT
 public:
@@ -92,7 +138,7 @@ private:
     const QString lf_;
     const QString rf_;
     db_t localdb_;    
-};
+};*/
 
 
 class progress_adapter_t : public QObject {
