@@ -17,7 +17,6 @@
         if (this != instance()) {\
             connect(this, SIGNAL(name##_changed(type)), instance(), SIGNAL(name##_changed(type)));\
         }\
-        qDebug() << "here:" << #name << value;\
         Q_EMIT name##_changed(value);\
     }\
     void reset_##name() {\

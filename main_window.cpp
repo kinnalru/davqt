@@ -81,9 +81,7 @@ main_window_t::main_window_t(QWidget* parent)
         d.add_item(new main_settings_t());
         d.exec();
         
-        qDebug() << "s1";
         if (p_->manager->is_busy()) {
-            qDebug() << "s2";
             QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
                 QMessageBox::Yes | QMessageBox::No
             );
@@ -103,9 +101,7 @@ main_window_t::main_window_t(QWidget* parent)
                 }         
             }
         }
-        qDebug() << "s3";
         restart();
-        qDebug() << "s4";
     });
     
     p_->enabled_a->setCheckable(true);
@@ -137,9 +133,7 @@ void main_window_t::restart()
 {
     if (p_->manager) {
         p_->manager->disconnect(this);
-        qDebug() << "r1";
         delete p_->manager;
-        qDebug() << "r2";
         p_->manager = NULL;
     }
 

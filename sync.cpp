@@ -436,7 +436,7 @@ void run_in_thread(QThread* th, Function func) {
 struct thread_manager_t::Pimpl {
     
     Pimpl(thread_manager_t::connection conn, const QString& lf, const QString& rf)
-        : conn(conn), lf(lf), rf(rf), abort(false), updater(NULL), stop(false)
+        : conn(conn), lf(lf), rf(rf), abort(false), stop(false), updating(false)
         , localdb(lf + "/" + db_t::prefix + "/db", lf)
     {}
     
@@ -445,13 +445,14 @@ struct thread_manager_t::Pimpl {
     const QString rf;
     db_t localdb;    
     
-    QThread* updater;
     QList<QThread*> threads;
     volatile bool stop;
     volatile bool abort;
     
     QMutex mx;
+    QWaitCondition needupdate;
     QWaitCondition dataexists;
+    bool updating;
     Actions todo;
     Actions in_progress;
 };
@@ -464,6 +465,19 @@ thread_manager_t::thread_manager_t(QObject* parent, connection conn, const QStri
     static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
     static int r3 = qRegisterMetaType<Actions>("Actions");    
     
+    {
+        QThread* th = new QThread(this);
+        QTimer* timer = new QTimer(0);
+        timer->setInterval(0);
+        timer->setSingleShot(true);
+        Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(update_thread()), Qt::DirectConnection));
+        Q_VERIFY(connect(timer, SIGNAL(timeout()), timer, SLOT(deleteLater())));          
+        Q_VERIFY(connect(th, SIGNAL(started()), timer, SLOT(start()))); 
+        timer->moveToThread(th);
+        p_->threads << th;
+        th->start();
+    }
+
     for (int i = 0; i < QThread::idealThreadCount(); ++i) {
         QThread* th = new QThread(this);
         QTimer* timer = new QTimer(0);
@@ -487,6 +501,7 @@ thread_manager_t::~thread_manager_t()
         p_->abort = true;
         Q_EMIT need_stop();
         p_->dataexists.wakeAll();
+        p_->needupdate.wakeAll();
     }
     
     Q_FOREACH(QThread* th, p_->threads) {
@@ -500,44 +515,22 @@ thread_manager_t::~thread_manager_t()
             th->wait(1000);                       
             th->terminate();
         }
-        
         th->wait(1000);
-    }
-    
-    if (p_->updater) {
-        p_->updater->wait(1000);
-        p_->updater->quit();  
-        if (p_->updater->isRunning()) {
-            p_->updater->wait(1000);                       
-            p_->updater->terminate();
-        }
-        
-        p_->updater->wait(1000);        
     }
 }
 
 bool thread_manager_t::is_busy()
 {
-    return !p_->todo.isEmpty() && !p_->in_progress.isEmpty() || p_->updater;
+    return !p_->todo.isEmpty() || !p_->in_progress.isEmpty() || p_->updating;
 }
 
 void thread_manager_t::update_status()
 {
-    Q_VERIFY(!p_->updater);
+    QMutexLocker locker(&p_->mx);    
+    Q_ASSERT(p_->todo.isEmpty());
+    Q_ASSERT(p_->in_progress.isEmpty());    
     
-    qDebug() << "update_status currentThread:" << QThread::currentThreadId();
-    
-    QDir().mkpath(p_->lf);
-    p_->updater = new QThread(this);
-    QTimer* timer = new QTimer(0);
-    timer->setInterval(0);
-    timer->setSingleShot(true);
-    Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(update_thread()), Qt::DirectConnection));
-    Q_VERIFY(connect(timer, SIGNAL(timeout()), timer, SLOT(deleteLater())));    
-    Q_VERIFY(connect(p_->updater, SIGNAL(started()), timer, SLOT(start()))); 
-    timer->moveToThread(p_->updater);    
-    Q_EMIT sync_started();
-    p_->updater->start();
+    p_->needupdate.wakeAll();
 }
 
 void thread_manager_t::start(const Actions& act)
@@ -546,7 +539,6 @@ void thread_manager_t::start(const Actions& act)
     Q_ASSERT(p_->todo.isEmpty());
     Q_ASSERT(p_->in_progress.isEmpty());
     
-    qDebug() << "start currentThread:" << QThread::currentThreadId();
     p_->todo = act;
     p_->dataexists.wakeAll();
 }
@@ -558,9 +550,10 @@ void thread_manager_t::stop()
         QMutexLocker locker(&p_->mx);
         p_->stop = true;        
         p_->todo.clear();
-        wait = !p_->in_progress.isEmpty();
-        if (wait)
+        wait = is_busy();
+        if (wait) {
             Q_EMIT need_stop();
+        }
     }
     if (wait) {
         QEventLoop loop;
@@ -572,41 +565,60 @@ void thread_manager_t::stop()
 
 void thread_manager_t::update_thread()
 {
-    try {
-        session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+    Q_FOREVER {
+        if (p_->abort) break;
         {
             QMutexLocker locker(&p_->mx);
-            Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
-            if (p_->stop) {
-                p_->updater->quit();
-                p_->updater->deleteLater();
-                p_->updater = NULL;        
-                Q_EMIT sync_finished();
-                return;
-            }
+            Q_ASSERT(p_->in_progress.isEmpty());
+            Q_ASSERT(p_->todo.isEmpty());
+            
+            p_->needupdate.wait(&p_->mx);
+            if (p_->abort) break;
+            if (p_->stop) continue;
+            
+            p_->updating = true;
+            Q_EMIT sync_started();
         }
         
-        session.set_auth(p_->conn.login, p_->conn.password);
-        session.set_ssl();
-        session.open();
-
-        const QList<action_t> actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
-        {
+        try {
+            session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+            
+            {
+                QMutexLocker locker(&p_->mx);
+                if (p_->stop) {
+                    continue;
+                }
+                Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
+            }
+            
+            session.set_auth(p_->conn.login, p_->conn.password);
+            session.set_ssl();
+            session.open();
+            
+            const Actions actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
+            {
+                QMutexLocker locker(&p_->mx);        
+                if (!p_->stop)
+                    Q_EMIT status_updated(actions);
+                
+                Q_ASSERT(p_->in_progress.isEmpty());
+                Q_ASSERT(p_->todo.isEmpty());
+                p_->updating = false;
+            }
+        }
+        catch (const std::exception& e) {
             QMutexLocker locker(&p_->mx);        
             if (!p_->stop)
-                Q_EMIT status_updated(actions);
+                Q_EMIT status_error(e.what());
+            
+            Q_ASSERT(p_->in_progress.isEmpty());
+            Q_ASSERT(p_->todo.isEmpty());
+            p_->updating = false;
         }
-    } 
-    catch (const std::exception& e) {
-        QMutexLocker locker(&p_->mx);        
-        if (!p_->stop)
-            Q_EMIT status_error(e.what());
+        
+        Q_EMIT sync_finished();
     }
-    
-    p_->updater->quit();
-    p_->updater->deleteLater();
-    p_->updater = NULL;
-    Q_EMIT sync_finished();
+    QThread::currentThread()->quit();    
 }
 
 void thread_manager_t::sync_thread()
@@ -628,15 +640,17 @@ void thread_manager_t::sync_thread()
         return c;
     };
     
-    auto action_completed = [this] (const action_t& action) {
+    auto action_completed = [this] (const action_t& action, bool takenext) {
         action_t c;
         QMutexLocker locker(&p_->mx);
         
         Q_VERIFY(p_->in_progress.removeOne(action));
         
         if (!p_->todo.isEmpty()) {
-            c = p_->todo.takeFirst();
-            p_->in_progress << c;            
+            if (takenext) {
+                c = p_->todo.takeFirst();
+                p_->in_progress << c;            
+            }
         } 
         else if (p_->in_progress.isEmpty()) {
             Q_EMIT sync_finished();
@@ -650,61 +664,68 @@ void thread_manager_t::sync_thread()
         if (p_->abort) break;
         current = take_action();
         if (p_->abort) break;
+        if (p_->stop) continue;    
         
         if (current.empty()) continue;
         
-        session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-        
-        {
-            QMutexLocker locker(&p_->mx);
-            if (p_->stop) {
-                current = action_t();
-                continue;
+        try {
+            session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+            
+            {
+                QMutexLocker locker(&p_->mx);
+                if (p_->stop) {
+                    current = action_t();
+                    continue;
+                }
+                Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
             }
-            Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
-        }
-        
-        session.set_auth(p_->conn.login, p_->conn.password);
-        session.set_ssl();
-        session.open();
-    
-        progress_adapter_t adapter;
-        
-        Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-        Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-        Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
-        
-        action_processor_t processor(session, p_->localdb,
-            [] (action_processor_t::resolve_ctx& ctx) {
-                return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
-            },
-            [] (action_processor_t::resolve_ctx& ctx) {
-                ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
-                return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
-            });
-        
-        do {
-            if (p_->stop) break;
-            if (p_->abort) break;
-            if (session.is_closed()) break;
             
-            adapter.set_action(current);
+            session.set_auth(p_->conn.login, p_->conn.password);
+            session.set_ssl();
+            session.open();
+        
+            progress_adapter_t adapter;
             
-            try {
-                Q_EMIT action_started(current);
-                processor.process(current);
+            Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+            Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+            Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
+            
+            action_processor_t processor(session, p_->localdb,
+                [] (action_processor_t::resolve_ctx& ctx) {
+                    return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+                },
+                [] (action_processor_t::resolve_ctx& ctx) {
+                    ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
+                    return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+                });
+            
+            do {
+                if (p_->stop) break;
+                if (p_->abort) break;
                 if (session.is_closed()) break;
-                Q_EMIT action_success(current);
-            }
-            catch(const qt_exception_t& e) {
-                Q_EMIT action_error(current, e.message());
-            }
-            catch(const std::exception& e) {
-                Q_EMIT action_error(current, e.what());
-            }
-            
-            current = action_completed(current);
-        } while (!current.empty());
+                
+                adapter.set_action(current);
+                
+                try {
+                    Q_EMIT action_started(current);
+                    processor.process(current);
+                    if (session.is_closed()) break;
+                    Q_EMIT action_success(current);
+                }
+                catch(const qt_exception_t& e) {
+                    Q_EMIT action_error(current, e.message());
+                }
+                catch(const std::exception& e) {
+                    Q_EMIT action_error(current, e.what());
+                }
+                
+                current = action_completed(current, true);
+            } while (!current.empty());
+        }
+        catch (const std::exception& e) {
+            Q_EMIT action_error(current, e.what());
+            current = action_completed(current, false);
+        }
     }
     QThread::currentThread()->quit();
 }
