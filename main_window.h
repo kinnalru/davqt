@@ -40,6 +40,7 @@ public Q_SLOTS:
     void sync();
     
     void status_updated(const Actions& actions);
+    void status_error(const QString& error);
 
     void sync_started();
     void sync_finished();

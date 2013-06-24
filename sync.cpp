@@ -566,6 +566,7 @@ void thread_manager_t::stop()
 void thread_manager_t::update_thread()
 {
     Q_FOREVER {
+        qDebug() << "upd1";
         if (p_->abort) break;
         {
             QMutexLocker locker(&p_->mx);
@@ -581,8 +582,9 @@ void thread_manager_t::update_thread()
         }
         
         try {
+            qDebug() << "upd2:" << p_->conn.schema << " " << p_->conn.host;
             session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-            
+            qDebug() << "upd3";
             {
                 QMutexLocker locker(&p_->mx);
                 if (p_->stop) {
@@ -591,16 +593,25 @@ void thread_manager_t::update_thread()
                 Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
             }
             
+            qDebug() << "upd4";
             session.set_auth(p_->conn.login, p_->conn.password);
+                        qDebug() << "upd5";
             session.set_ssl();
+                        qDebug() << "upd6";
             session.open();
+                        qDebug() << "upd7";
             
+            qDebug() << "upd8: " << p_->rf;
             const Actions actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
+            qDebug() << "upd9";
             {
                 QMutexLocker locker(&p_->mx);        
-                if (!p_->stop)
+                qDebug() << "upd10";
+                if (!p_->stop) {
+                    qDebug() << "upd11";
                     Q_EMIT status_updated(actions);
-                
+                }
+                qDebug() << "upd12";
                 Q_ASSERT(p_->in_progress.isEmpty());
                 Q_ASSERT(p_->todo.isEmpty());
                 p_->updating = false;

@@ -131,6 +131,7 @@ static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *ce
 
     int ret = -1;
 
+    return 0;
     
     if (failures & NE_SSL_NOTYETVALID)
         std::cerr << "the server certificate is not yet valid" << std::endl;
@@ -269,7 +270,7 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
 
     data = ne_propset_value(set, &prop_names[LENGTH]);
     if (!data) data = ne_propset_value(set, &anonymous_prop_names[LENGTH]);
-    resource.size = boost::lexical_cast<off_t>(data);
+    if (data) resource.size = boost::lexical_cast<off_t>(data);
 
     data = ne_propset_value(set, &prop_names[PERMISSIONS]);
     if (!data) data = ne_propset_value(set, &anonymous_prop_names[PERMISSIONS]);
@@ -316,6 +317,13 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     else {
         resource.name = QFileInfo(resource.path).fileName();        
     }
+    
+    qDebug() << "resource uri:" << ne_path_unescape(uri->path);
+    qDebug() << "resource ctx:" << ctx->path;
+    qDebug() << "resource ctx a:" << QFileInfo(ctx->path).absoluteFilePath();
+    qDebug() << "resource path:" << resource.path ;
+    qDebug() << "resource path a:" << QFileInfo(resource.path).absoluteFilePath() ;
+    qDebug() << "resource name:" << resource.name ;
     
     ctx->resources << resource;
 }
@@ -421,7 +429,12 @@ bool session_t::is_closed() const
 }
 
 
-QList<remote_res_t> session_t::get_resources(const QString& unescaped_path) {
+QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
+    unescaped_path.replace("///", "/");
+    unescaped_path.replace("//", "/"); 
+    if (unescaped_path.right(1) == "/") 
+        unescaped_path = unescaped_path.left(unescaped_path.length() - 1);   
+    
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);  
     
     std::shared_ptr<ne_propfind_handler> ph(
@@ -430,7 +443,8 @@ QList<remote_res_t> session_t::get_resources(const QString& unescaped_path) {
     );
 
     cache_context_t ctx;
-    ctx.path = unescaped_path;
+    ctx.path = unescaped_path;  
+
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));

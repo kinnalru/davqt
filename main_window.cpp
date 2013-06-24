@@ -137,8 +137,9 @@ void main_window_t::restart()
         p_->manager = NULL;
     }
 
-    QUrl url(settings().host());
-    url.setPath(settings().remotefolder());
+    const QUrl url(settings().host());
+    qDebug() << "url:" << url;
+    qDebug() << "path:" << url.path();
     
     p_->ui.remotefolder->setText(url.toString());
     p_->ui.localfolder->setText(settings().localfolder());
@@ -151,9 +152,10 @@ void main_window_t::restart()
         settings().password()
     };
     
-    p_->manager = new thread_manager_t(0, conn, settings().localfolder(), settings().remotefolder());
+    p_->manager = new thread_manager_t(0, conn, settings().localfolder(), url.path() + settings().remotefolder());
 
-    Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));         
+    Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));
+    Q_VERIFY(connect(p_->manager, SIGNAL(status_error(QString)), this, SLOT(status_error(QString))));             
     
     Q_VERIFY(connect(p_->manager, SIGNAL(sync_started()), this, SLOT(sync_started())));            
     Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));     
@@ -272,6 +274,7 @@ void main_window_t::start_sync()
 
 void main_window_t::status_updated(const Actions& actions)
 {
+    qDebug() << "status_updated";
     auto groupit = [this] (action_t::type_e type) -> QTreeWidgetItem* {
         auto find = [this] (const QString& text) {
             auto list = p_->ui.actions->findItems(text, Qt::MatchExactly);
@@ -313,6 +316,7 @@ void main_window_t::status_updated(const Actions& actions)
     auto allitems = all_items(p_->ui.actions);
     
     Q_FOREACH(const action_t& action, actions) {
+        qDebug() << "status_updated : " << action.local_file;
         QTreeWidgetItem* group = groupit(action.type);
         if (QProgressBar* pb = get_pb(p_->ui.actions, group)) {
             pb->setMaximum(pb->maximum() + 1);
@@ -350,6 +354,18 @@ void main_window_t::status_updated(const Actions& actions)
     p_->ui.actions->resizeColumnToContents(2);
     
     p_->actions = actions;
+}
+
+void main_window_t::status_error(const QString& error)
+{
+    const auto text = tr("Can't update status");
+    auto it = find_item(p_->ui.errors, text);
+    if (!it) {
+        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << text << error);
+        p_->ui.errors->addTopLevelItem(item);
+    }
+    
+    set_state(gui_state_e::error);
 }
 
 void main_window_t::action_started(const action_t& action)

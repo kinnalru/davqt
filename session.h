@@ -45,7 +45,7 @@ public:
     Q_SLOT void cancell();
     bool is_closed() const;
     
-    QList<remote_res_t> get_resources(const QString& unescaped_path);
+    QList<remote_res_t> get_resources(QString unescaped_path);
     
     stat_t get(const QString& unescaped_path, int fd);
     

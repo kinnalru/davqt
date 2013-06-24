@@ -16,6 +16,8 @@ typedef QFileInfo local_res_t;
 /// describes state of remote resource
 struct remote_res_t {
     
+    remote_res_t() : size(-1), ctime(0), mtime(0) {}
+    
     QString path;   /* The unescaped path of the resource. */
     QString name;   /* The name of the file or directory. Only the last
                            component (no path), no slashes. */
