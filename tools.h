@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QTimer>
+#include <QUrl>
 
 #if !defined(Q_VERIFY)
 #  ifndef QT_NO_DEBUG
@@ -48,4 +49,70 @@ void singleShot(int ms, const T &reciever, Qt::ConnectionType type = Qt::AutoCon
     auto h =new detail::connect_simple_helper(0, f); h->del_ = true;
     QTimer::singleShot(ms, h, SLOT(signaled()));
 }
+
+class url_t : public QObject{
+    Q_OBJECT
+public:
+    url_t() {}
+    virtual ~url_t() {}
+    
+    QString last_value() const {
+        return last_value_;
+    }
+    
+    Q_SLOT void parse(const QString& u) {
+        const QUrl url(u);
+        
+        if (!url.isValid()) {
+            last_value_ = url.errorString();
+            Q_EMIT error(last_value_);
+            return;
+        }
+        
+        if (url.scheme() == "http") {
+            last_value_ = "false";
+            Q_EMIT ssl(false);
+        } 
+        else if (url.scheme() == "https") {
+            last_value_ = "true";
+            Q_EMIT ssl(true);
+        }
+        else {
+            last_value_ = tr("Invalid connection scheme:%1 must be \"http\" or \"https\"").arg(url.scheme());     
+            Q_EMIT error(last_value_);
+            return;
+        }
+        
+        if (url.host().isEmpty()) {
+            last_value_ = tr("Invalid hostname %1").arg(url.host());     
+            Q_EMIT error(last_value_);
+            return;
+        }
+        else {
+            last_value_ = url.host();     
+            Q_EMIT hostname(last_value_);
+        }
+        
+        last_value_ = url.path();     
+        Q_EMIT path(last_value_);
+
+        last_value_ = QString::number(url.port());
+        Q_EMIT port(url.port());
+        
+        Q_EMIT ok();
+    }
+    
+Q_SIGNALS:
+    void ssl(bool b);
+    void hostname(const QString& host);
+    void path(const QString& host);    
+    void port(int);
+    
+    void error(const QString& host);
+    void ok();
+    
+private:
+    QString last_value_;
+};
+
 

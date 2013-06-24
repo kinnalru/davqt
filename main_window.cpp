@@ -46,6 +46,8 @@ struct main_window_t::Pimpl {
     QAction* enabled_a;
 };
 
+QDateTime start_time_c;
+
 main_window_t::main_window_t(QWidget* parent)
     : QWidget(parent)
     , p_(new Pimpl())
@@ -122,6 +124,8 @@ main_window_t::main_window_t(QWidget* parent)
     QTimer* timer = new QTimer(this);
     Q_VERIFY(connect(timer, SIGNAL(timeout()), this, SLOT(sync())));
     timer->setInterval(1000);
+
+    start_time_c = QDateTime::currentDateTime();
     timer->start();
 }
 
@@ -137,9 +141,9 @@ void main_window_t::restart()
         p_->manager = NULL;
     }
 
+    url_t checker;
+    
     const QUrl url(settings().host());
-    qDebug() << "url:" << url;
-    qDebug() << "path:" << url.path();
     
     p_->ui.remotefolder->setText(url.toString());
     p_->ui.localfolder->setText(settings().localfolder());
@@ -248,6 +252,9 @@ void main_window_t::sync()
 
     if (to_sync != 0)
         return;
+    
+    
+    if (start_time_c.secsTo(QDateTime::currentDateTime()) < 5) return;
     
     if (settings().enabled() && interval> 0)
         force_sync();

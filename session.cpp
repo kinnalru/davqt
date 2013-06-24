@@ -95,10 +95,12 @@ struct cache_context_t {
 };
 
 struct session_t::Pimpl {
+    QString scheme;
     auth_data_t auth;
     volatile bool cancell;
     Notify notify;    
     std::shared_ptr<ne_session> session;
+    QDateTime lastprogress;
 };
 
 static int auth(void *userdata, const char *realm, int attempt, char *user, char *pwd)
@@ -112,11 +114,15 @@ static int auth(void *userdata, const char *realm, int attempt, char *user, char
     strncpy(user, qPrintable(data->user), NE_ABUFSIZ - 1);
     strncpy(pwd, qPrintable(data->passwd), NE_ABUFSIZ - 1);
 
+
+
     return 0;
 }
 
 static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *cert)
 {
+    return 0;
+    
     char *issuer = ne_ssl_readable_dname(ne_ssl_cert_issuer(cert));
     char *subject = ne_ssl_readable_dname(ne_ssl_cert_subject(cert));
     char *digest = (char*)ne_calloc(NE_SSL_DIGESTLEN);
@@ -130,8 +136,6 @@ static int ssl_verify(void *userdata, int failures, const ne_ssl_certificate *ce
     }
 
     int ret = -1;
-
-    return 0;
     
     if (failures & NE_SSL_NOTYETVALID)
         std::cerr << "the server certificate is not yet valid" << std::endl;
@@ -350,6 +354,8 @@ session_t::session_t(QObject* parent, const QString& schema, const QString& host
     : QObject(parent)
     , p_(new Pimpl)
 {
+    p_->scheme = schema;
+    p_->lastprogress = QDateTime::currentDateTime();
     p_->cancell = false;
     p_->session.reset(
         ne_session_create(schema.toLocal8Bit().constData(), host.toLocal8Bit().constData(), (port == -1) ? ne_uri_defaultport("https") : port),
@@ -373,10 +379,16 @@ session_t::session_t(QObject* parent, const QString& schema, const QString& host
                 Q_EMIT connected();
                 break;
             case ne_status_sending: 
-                Q_EMIT put_progress(info->sr.progress, info->sr.total);
+                if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
+                    p_->lastprogress = QDateTime::currentDateTime();
+                    Q_EMIT put_progress(info->sr.progress, info->sr.total);
+                }
                 break;
             case ne_status_recving:
-                Q_EMIT get_progress(info->sr.progress, info->sr.total);
+                if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
+                    p_->lastprogress = QDateTime::currentDateTime();
+                    Q_EMIT get_progress(info->sr.progress, info->sr.total);
+                }
                 break;
             case ne_status_disconnected:
                 Q_EMIT disconnected();
@@ -403,6 +415,8 @@ void session_t::set_auth(const QString& user, const QString& password)
 
 void session_t::set_ssl()
 {
+    if (p_->scheme != "https") return;
+    
     ne_ssl_set_verify(p_->session.get(), ssl_verify, NULL);
     ne_ssl_trust_default_ca(p_->session.get());
 }

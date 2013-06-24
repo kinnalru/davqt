@@ -101,7 +101,7 @@ KDialog::ButtonCode kbutton( QDialogButtonBox::StandardButton button )
 /// struct that creates and holds concrete helpers as generic functors
 struct preferences_dialog::Pimpl { 
 
-    Pimpl():template_widget(0){}
+    Pimpl():template_widget(0), block(false) {}
 
     template <typename Tag>
     void init_ui()
@@ -147,6 +147,7 @@ struct preferences_dialog::Pimpl {
 
     detail::connector* connector;
     bool native;
+    bool block;
 };
 
 
@@ -241,6 +242,7 @@ preferences_item preferences_dialog::add_item(preferences_widget * cw, const pre
 //     cw->setFixedSize( QSize(500,500) );
 
     connect( cw, SIGNAL( changed() ), SLOT( changed() ) );
+    connect( cw, SIGNAL( block(bool)) , SLOT( block(bool) ) );
     if ( !p_->native )
     {
         if ( p_->initial_type == Auto )
@@ -291,7 +293,7 @@ preferences_item preferences_dialog::add_item(preferences_widget * cw, const pre
 void preferences_dialog::changed()
 {
     button( QDialogButtonBox::RestoreDefaults )->setEnabled(true);
-    button( QDialogButtonBox::Apply )->setEnabled(true);
+    button( QDialogButtonBox::Apply )->setEnabled(true && !p_->block);
 }
 
 void preferences_dialog::accept()
@@ -299,6 +301,13 @@ void preferences_dialog::accept()
 
 void preferences_dialog::reject()
 { cancelClicked(); }
+
+void preferences_dialog::block(bool b)
+{
+    p_->block = b;
+    button(QDialogButtonBox::Ok)->setEnabled(!b);
+    button(QDialogButtonBox::Apply)->setEnabled(!b); 
+}
 
 void preferences_dialog::apply_current()
 {
@@ -321,6 +330,7 @@ void preferences_dialog::restoreClicked()
 
     if ( ret == QMessageBox::Cancel ) return;
 
+    p_->block = false;
     if ( button(QDialogButtonBox::Apply)->isEnabled() ) reject_current();
     p_->current_item.widget()->reset_defaults();
     button( QDialogButtonBox::RestoreDefaults )->setEnabled(false);

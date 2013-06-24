@@ -46,6 +46,8 @@ public Q_SLOTS:
     ///Defalut QDialog reject action
     void reject();
 
+    void block(bool b);
+    
     ///Apply changes in current preferences_widget
     void apply_current();
     ///Reject changes in current preferences_widget

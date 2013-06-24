@@ -17,6 +17,7 @@
  *
  */
 
+#include <QDebug>
 
 #include "tools.h"
 #include "settings.h"
@@ -71,6 +72,11 @@ void main_settings_t::update_preferences()
 
 void main_settings_t::accept()
 {
+    if (!check_url()) {
+        qDebug() << "check faileD!";
+//         return false;
+    }
+    
     settings s;
     
     s.set_host(p_->ui.host->text());
@@ -100,9 +106,40 @@ void main_settings_t::reset_defaults()
 
 void main_settings_t::int_changed()
 {
+    check_url();
     if (!lock_change_) emit changed();
 }
 
+bool main_settings_t::check_url()
+{
+    url_t checker;
+    QEventLoop loop;
+    
+    p_->ui.parsedurl->clear();
+    
+    Q_VERIFY(::connect(&checker, SIGNAL(error(QString)), [&] {
+        p_->ui.parsedurl->setText(checker.last_value());
+        loop.exit(-1);
+    }));
+    
+    Q_VERIFY(::connect(&checker, SIGNAL(ok()), [&] {loop.exit(0);}));
+    
+    Q_VERIFY(::connect(&checker, SIGNAL(ssl(bool)), [&] {
+        if (checker.last_value() == "true")
+            p_->ui.parsedurl->setText(tr("SSL enabled"));
+        else {
+            p_->ui.parsedurl->setText(tr("SSL disabled"));
+        }
+    }));
+
+    ::singleShot(0, [&] {checker.parse(p_->ui.host->text());});
+    
+    bool b = loop.exec();
+    
+    Q_EMIT(block(b));
+    
+    return b;    
+}
 
 
 

@@ -33,6 +33,8 @@ Q_SIGNALS:
     void changed();
 
     void enabled( bool b);
+    
+    void block(bool b);
 public Q_SLOTS:
 
     ///Этот слот вызывается перед показом виджета и загрузка всех настроек должна поисходить здесь

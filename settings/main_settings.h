@@ -40,6 +40,8 @@ private Q_SLOTS:
 
     void int_changed();
 
+    bool check_url();
+    
 private:
     struct Pimpl;
     std::auto_ptr<Pimpl> p_;
