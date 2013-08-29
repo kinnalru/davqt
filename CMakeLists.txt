@@ -1,4 +1,4 @@
-set(TARGET gdrive)
+set(TARGET davqt)
 project(${TARGET})
 
 cmake_minimum_required(VERSION 2.4)
