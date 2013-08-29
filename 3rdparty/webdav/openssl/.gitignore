@@ -124,3 +124,6 @@ test/srptest
 test/ssltest
 test/wp_test
 tools/c_rehash.bak
+Makefile
+crypto/opensslconf.h
+tools/c_rehash
