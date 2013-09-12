@@ -1,4 +1,6 @@
 #!/bin/sh
 
-PREFIX=`pwd`/../build
-CPPFLAGS="-I${PREFIX}/include" LDFLAGS="-L${PREFIX}/lib" ./config --prefix=${PREFIX} no-shared && make && make install
+LOCAL_PREFIX=$1
+PREFIX=$LOCAL_PREFIX
+
+CPPFLAGS="-I${PREFIX}/include" LDFLAGS="-L${PREFIX}/lib" ./config --prefix=${PREFIX} no-shared

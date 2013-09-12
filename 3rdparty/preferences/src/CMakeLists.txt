@@ -14,6 +14,9 @@ find_package(KDE4)
 #restoring compiler flags
 set ( CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_BACK} )
 
+SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
+SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib2)
+
 if(KDE4_FOUND)
     add_definitions(${KDE4_ENABLE_EXCEPTIONS})
     add_definitions(-DUSE_KDE_DIALOG)
@@ -53,11 +56,12 @@ set(IFACES
 qt4_wrap_cpp(SOURCES ${MOC_HEADERS})
 qt4_wrap_ui(SOURCES ${IFACES})
 
-add_library(${TARGET} STATIC ${SOURCES})
+add_library(${TARGET} SHARED ${SOURCES})
 
-set_target_properties(${TARGET} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-set_target_properties(${TARGET} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+#set_target_properties(${TARGET} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+#set_target_properties(${TARGET} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+#set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 target_link_libraries(${TARGET} ${QT_LIBRARIES} ${KDE4_LIBS})
 
