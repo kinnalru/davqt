@@ -20,9 +20,9 @@ find_package(Qt4 REQUIRED QtCore QtNetwork QtGui)
 include(${QT_USE_FILE})
 
 
-add_subdirectory(3rdparty/webdav/openssl)
-add_subdirectory(3rdparty/webdav/libxml2)
-add_subdirectory(3rdparty/webdav/neon)
+#add_subdirectory(3rdparty/webdav/openssl)
+#add_subdirectory(3rdparty/webdav/libxml2)
+#add_subdirectory(3rdparty/webdav/neon)
 
 add_subdirectory(3rdparty/preferences)
 
@@ -60,8 +60,9 @@ set(RESOURCES
 )
 
 set(DEPS
-    ${CMAKE_BINARY_DIR}/lib/libneon.a 
-    ${CMAKE_BINARY_DIR}/lib/libxml2.a 
+	#    ${CMAKE_BINARY_DIR}/lib/libneon.a 
+	#    ${CMAKE_BINARY_DIR}/lib/libxml2.a 
+	neon
 )
 
 qt4_wrap_cpp(SOURCES ${MOC})
@@ -69,7 +70,6 @@ qt4_wrap_ui(SOURCES ${IFACES})
 qt4_add_resources(SOURCES ${RESOURCES})
 
 add_executable(${TARGET} WIN32 ${HEADERS} ${SOURCES})
-add_dependencies(${TARGET} libxml2 libopenssl libneon)
 target_link_libraries(${TARGET} ${Boost_LIBRARIES} ${QT_LIBRARIES} ${DEPS} preferences)
 
 
