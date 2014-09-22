@@ -30,7 +30,8 @@ int main(int argc, char** argv)
 
         auto db = new database::fs_t("/tmp/1");
         
-        db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
+        //db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
+        db->get("test");
         
         main_window_t m;
         m.show();

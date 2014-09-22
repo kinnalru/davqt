@@ -19,6 +19,9 @@ struct fs_t: public database_t {
   virtual QStringList folders(QString folder) const;
 
 private:
+  QFileInfo info(const QString& path) const;
+  
+private:
   struct Pimpl;
   std::unique_ptr<Pimpl> p_;
     

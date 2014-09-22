@@ -41,11 +41,11 @@ database::fs_t::~fs_t()
 {
 }
 
-void database::fs_t::put(const QString& absolutefilepath, const db_entry_t& entry)
+void database::fs_t::put(const QString& filepath, const db_entry_t& entry)
 {
-  debug() << "save entry:" << absolutefilepath;
+  debug() << "save entry:" << filepath;
   
-  QSettings file(p_->dbpath + "/" + absolutefilepath, QSettings::IniFormat);
+  QSettings file(info(filepath).canonicalFilePath(), QSettings::IniFormat);
   file.clear();
   
   QMutexLocker locker(&p_->mx);    
@@ -64,11 +64,23 @@ void database::fs_t::put(const QString& absolutefilepath, const db_entry_t& entr
   file.setValue("is_bad",      entry.bad);
 }
 
-db_entry_t database::fs_t::get(const QString& absolutefilepath)
+db_entry_t database::fs_t::get(const QString& filepath)
 {
-  debug() << "load entry:" << absolutefilepath;
+  debug() << "load entry:" << filepath;
   
-  QSettings file(p_->dbpath + "/" + absolutefilepath, QSettings::IniFormat);
+  QSettings file(info(filepath).canonicalFilePath(), QSettings::IniFormat);
+  
+  return db_entry_t(
+      "root",
+      info(filepath).absolutePath(),
+      info(filepath).fileName(),
+      stat_t(QString(), info(filepath).absolutePath(), 0, 0, -1),
+      stat_t(QString(), QString(), 0, 0, -1),
+      false
+  );
+
+  return db_entry_t();
+  
 }
 
 
@@ -88,6 +100,11 @@ QStringList database::fs_t::entries(QString folder) const
 
 }
 
+
+QFileInfo database::fs_t::info(const QString& path) const
+{
+  return QFileInfo(p_->dbpath + "/" + path);
+}
 
 
 
