@@ -6,6 +6,10 @@ if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
 endif(COMMAND cmake_policy)
 
+if(CMAKE_BUILD_TYPE STREQUAL Debug)
+    add_definitions(-DDEBUG)
+endif()
+
 add_definitions("-std=c++0x")
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -27,7 +31,9 @@ include(${QT_USE_FILE})
 add_subdirectory(3rdparty/preferences)
 
 set(HEADERS
-    database.h
+    database/database.h
+    database/fs/fs.h
+    database/db.h
     handlers.h
 )
 
@@ -41,7 +47,8 @@ set(MOC
 )
 
 set(SOURCES 
-    database.cpp
+    database/database.cpp
+    database/fs/fs.cpp
     handlers.cpp
     main.cpp
     main_window.cpp

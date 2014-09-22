@@ -25,7 +25,7 @@
 #include <QDebug>
 
 #include "types.h"
-#include "database.h"
+#include "database/database.h"
 
 class thread_manager_t : public QObject {
     Q_OBJECT

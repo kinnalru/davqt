@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
+#include <QDebug>
 
 #if !defined(Q_VERIFY)
 #  ifndef QT_NO_DEBUG
@@ -71,35 +72,43 @@ public:
         
         if (url.scheme() == "http") {
             last_value_ = "false";
+            qDebug() << last_value_;
             Q_EMIT ssl(false);
         } 
         else if (url.scheme() == "https") {
             last_value_ = "true";
+            qDebug() << last_value_;
             Q_EMIT ssl(true);
         }
         else {
             last_value_ = tr("Invalid connection scheme:%1 must be \"http\" or \"https\"").arg(url.scheme());     
+            qDebug() << last_value_;
             Q_EMIT error(last_value_);
             return;
         }
         
         if (url.host().isEmpty()) {
             last_value_ = tr("Invalid hostname %1").arg(url.host());     
+            qDebug() << last_value_;
             Q_EMIT error(last_value_);
             return;
         }
         else {
             last_value_ = url.host();     
+            qDebug() << last_value_;
             Q_EMIT hostname(last_value_);
         }
         
         last_value_ = url.path();     
+        qDebug() << last_value_;
         Q_EMIT path(last_value_);
 
         last_value_ = QString::number(url.port());
+        qDebug() << last_value_;
         Q_EMIT port(url.port());
         
         Q_EMIT ok();
+        qDebug() << "OK!";
     }
     
 Q_SIGNALS:

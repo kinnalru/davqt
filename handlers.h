@@ -4,7 +4,7 @@
 
 #include "session.h"
 #include "sync.h"
-#include "database.h"
+#include "database/database.h"
 
 struct base_handler_t {
     virtual void do_check(session_t& session, const action_t& action) const = 0;

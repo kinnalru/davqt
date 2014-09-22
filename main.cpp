@@ -9,6 +9,9 @@
 
 #include "main_window.h"
 
+#include "database/fs/fs.h"
+#include "types.h"
+
 int main(int argc, char** argv)
 {
     try {
@@ -24,11 +27,16 @@ int main(int argc, char** argv)
 
 //         QApplication::setQuitOnLastWindowClosed(false);
 
+
+        auto db = new database::fs_t("/tmp/1");
+        
+        db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
         
         main_window_t m;
         m.show();
         
         return app.exec();
+        
         
     }
     catch (std::exception& e) {

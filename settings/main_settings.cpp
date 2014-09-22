@@ -134,11 +134,15 @@ bool main_settings_t::check_url()
 
     ::singleShot(0, [&] {checker.parse(p_->ui.host->text());});
     
-    bool b = loop.exec();
+    qDebug() << "Exec....";
     
-    Q_EMIT(block(b));
+    bool b = !loop.exec();
     
-    return b;    
+    qDebug() << "Exec finish:" << b;
+    
+    //Q_EMIT(block(!b));
+    
+    return b;
 }
 
 

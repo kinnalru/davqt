@@ -262,7 +262,7 @@ void main_window_t::sync()
 
 void main_window_t::force_sync()
 {
-    qDebug() << "main sync2 busy:" << p_->manager->is_busy() << " enabled:" << settings().enabled();
+    qDebug() << Q_FUNC_INFO << "Busy:" << p_->manager->is_busy(); 
     
     if (!p_->manager->is_busy()) {
         qDebug() << "main sync3";
@@ -276,6 +276,7 @@ void main_window_t::force_sync()
 
 void main_window_t::start_sync()
 {
+    qDebug() << Q_FUNC_INFO << "Action count:" << p_->actions.size();
     p_->manager->start(p_->actions);
 }
 

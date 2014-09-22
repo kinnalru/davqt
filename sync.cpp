@@ -20,10 +20,11 @@
 
 #include <QDateTime>
 #include <QDebug>
-#include <QMutex>
-#include <QWaitCondition>
-#include <QProcess>
 #include <QEventLoop>
+#include <QMutex>
+#include <QProcess>
+#include <QThreadStorage>
+#include <QWaitCondition>
 
 #include "sync.h"
 #include "handlers.h"
@@ -334,7 +335,11 @@ QList<action_t> handle_dirs(db_t& localdb, session_t& session, const QString& lo
 
 QList<action_t> scan_and_compare(db_t& localdb, session_t& session, const QString& localfolder, const QString& remotefolder)
 {
+    qDebug() << Q_FUNC_INFO << "localfolder:" << localfolder << " remotefolder:" << remotefolder;
+    
     const QList<remote_res_t> remote_cache = session.get_resources(remotefolder);
+
+    qDebug() << Q_FUNC_INFO << "Remote cache size:" << remote_cache.size();
     
     const QFileInfoList local_cache = [&] {
         QFileInfoList ret;
@@ -439,7 +444,9 @@ struct thread_manager_t::Pimpl {
         : conn(conn), lf(lf), rf(rf), abort(false), stop(false), updating(false)
         , localdb(lf + "/" + db_t::prefix + "/db", lf)
     {}
-    
+
+    QThreadStorage<QString> thread_name;
+
     const connection conn;
     const QString lf;
     const QString rf;
@@ -478,7 +485,8 @@ thread_manager_t::thread_manager_t(QObject* parent, connection conn, const QStri
         th->start();
     }
 
-    for (int i = 0; i < QThread::idealThreadCount(); ++i) {
+    //for (int i = 0; i < QThread::idealThreadCount(); ++i) {
+    for (int i = 0; i < 1; ++i) {
         QThread* th = new QThread(this);
         QTimer* timer = new QTimer(0);
         timer->setInterval(0);
@@ -529,7 +537,8 @@ void thread_manager_t::update_status()
     QMutexLocker locker(&p_->mx);    
     Q_ASSERT(p_->todo.isEmpty());
     Q_ASSERT(p_->in_progress.isEmpty());    
-    
+
+    qDebug() << Q_FUNC_INFO << "Waiking all for update";
     p_->needupdate.wakeAll();
 }
 
@@ -538,6 +547,8 @@ void thread_manager_t::start(const Actions& act)
     QMutexLocker locker(&p_->mx);
     Q_ASSERT(p_->todo.isEmpty());
     Q_ASSERT(p_->in_progress.isEmpty());
+    
+    qDebug() << Q_FUNC_INFO << "Action " << act.size();
     
     p_->todo = act;
     p_->dataexists.wakeAll();
@@ -566,7 +577,9 @@ void thread_manager_t::stop()
 void thread_manager_t::update_thread()
 {
     Q_FOREVER {
-        qDebug() << "upd1";
+        p_->thread_name.setLocalData(QString("UpdateThread[%1]").arg(QThread::currentThreadId()));  
+        qDebug() << p_->thread_name.localData() <<  Q_FUNC_INFO << "Starting update thread";
+
         if (p_->abort) break;
         {
             QMutexLocker locker(&p_->mx);
@@ -574,6 +587,7 @@ void thread_manager_t::update_thread()
             Q_ASSERT(p_->todo.isEmpty());
             
             p_->needupdate.wait(&p_->mx);
+            qDebug() << p_->thread_name.localData() << Q_FUNC_INFO << "Waked for update ABORT:" << p_->abort << " STOP:" << p_->stop;
             if (p_->abort) break;
             if (p_->stop) continue;
             
@@ -582,9 +596,7 @@ void thread_manager_t::update_thread()
         }
         
         try {
-            qDebug() << "upd2:" << p_->conn.schema << " " << p_->conn.host;
             session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-            qDebug() << "upd3";
             {
                 QMutexLocker locker(&p_->mx);
                 if (p_->stop) {
@@ -593,31 +605,26 @@ void thread_manager_t::update_thread()
                 Q_VERIFY(connect(this, SIGNAL(need_stop()), &session, SLOT(cancell()), Qt::DirectConnection));
             }
             
-            qDebug() << "upd4";
             session.set_auth(p_->conn.login, p_->conn.password);
-                        qDebug() << "upd5";
             session.set_ssl();
-                        qDebug() << "upd6";
             session.open();
-                        qDebug() << "upd7";
             
-            qDebug() << "upd8: " << p_->rf;
+            qDebug() << p_->thread_name.localData() << Q_FUNC_INFO << "Scanning and comparing...";
             const Actions actions = scan_and_compare(p_->localdb, session, p_->lf, p_->rf);    
-            qDebug() << "upd9";
             {
                 QMutexLocker locker(&p_->mx);        
-                qDebug() << "upd10";
                 if (!p_->stop) {
-                    qDebug() << "upd11";
+                    qDebug() << p_->thread_name.localData() << Q_FUNC_INFO << "Scanning and comparing...";
                     Q_EMIT status_updated(actions);
                 }
-                qDebug() << "upd12";
+                qDebug() << p_->thread_name.localData() << "upd12";
                 Q_ASSERT(p_->in_progress.isEmpty());
                 Q_ASSERT(p_->todo.isEmpty());
                 p_->updating = false;
             }
         }
         catch (const std::exception& e) {
+            qDebug() << p_->thread_name.localData() << "Exception in " << Q_FUNC_INFO << ": " << e.what();
             QMutexLocker locker(&p_->mx);        
             if (!p_->stop)
                 Q_EMIT status_error(e.what());
@@ -634,6 +641,9 @@ void thread_manager_t::update_thread()
 
 void thread_manager_t::sync_thread()
 {
+    p_->thread_name.setLocalData(QString("SyncThread[%1]").arg(QThread::currentThreadId()));  
+    qDebug() << p_->thread_name.localData() <<  Q_FUNC_INFO << "Starting sync thread";
+    
     auto take_action = [this] () {
         action_t c;
         QMutexLocker locker(&p_->mx);

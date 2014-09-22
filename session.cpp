@@ -446,10 +446,16 @@ bool session_t::is_closed() const
 QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
     unescaped_path.replace("///", "/");
     unescaped_path.replace("//", "/"); 
-    if (unescaped_path.right(1) == "/") 
-        unescaped_path = unescaped_path.left(unescaped_path.length() - 1);   
+//     if (unescaped_path.right(1) == "/") 
+//         unescaped_path = unescaped_path.left(unescaped_path.length() - 1);   
+    
+    qDebug() << Q_FUNC_INFO << "rawpath: " << unescaped_path;
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);  
+
+    qDebug() << Q_FUNC_INFO << "path: " << path.get();
+    
+
     
     std::shared_ptr<ne_propfind_handler> ph(
         ne_propfind_create(p_->session.get(), path.get(), NE_DEPTH_ONE),
