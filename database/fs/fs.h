@@ -8,7 +8,7 @@ namespace database {
 
 struct fs_t: public database_t {
   
-  fs_t(const QString& dbpath);
+  fs_t(const storage_t& s, const QString& dbpath);
   ~fs_t();
 
   virtual void put(const QString& absolutefilepath, const db_entry_t& entry);
@@ -19,7 +19,7 @@ struct fs_t: public database_t {
   virtual QStringList folders(QString folder) const;
 
 private:
-  QFileInfo info(const QString& path) const;
+  QString item(const QString& path) const;
   
 private:
   struct Pimpl;

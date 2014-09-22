@@ -34,6 +34,7 @@ set(HEADERS
     database/database.h
     database/fs/fs.h
     database/db.h
+    storage.h
     handlers.h
 )
 
@@ -52,6 +53,7 @@ set(SOURCES
     handlers.cpp
     main.cpp
     main_window.cpp
+    storage.cpp
     session.cpp
     sync.cpp
     settings/main_settings.cpp

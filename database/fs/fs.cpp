@@ -18,23 +18,20 @@ struct database::fs_t::Pimpl {
   QMutex mx;  
 };
 
-database::fs_t::fs_t(const QString& dbpath)
-  : p_(new Pimpl)
+database::fs_t::fs_t(const storage_t& s, const QString& dbpath)
+  : database_t(s)
+  , p_(new Pimpl)
 {
-  p_->dbpath = dbpath;
   
-  debug() << "loading db:" << p_->dbpath;
-  
-  Q_VERIFY(QFileInfo(p_->dbpath).isDir());
-/*  
-  QDirIterator it(p_->dbpath, QDirIterator::Subdirectories);
-  
-  while(it.hasNext()) {
-    it.next();
-      
-    debug() << it.fileInfo().dir().canonicalPath();
-  }*/
+  QDir dir(dbpath);
+  if (!dir.exists()) {
+    if (!dir.mkpath(".")) {
+      throw qt_exception_t(QString("Can't use db path [%1]").arg(dir.canonicalPath()));
+    }
+  }
+  p_->dbpath = dir.canonicalPath();
 
+  debug() << "loading db:" << p_->dbpath;
 }
 
 database::fs_t::~fs_t()
@@ -45,12 +42,14 @@ void database::fs_t::put(const QString& filepath, const db_entry_t& entry)
 {
   debug() << "save entry:" << filepath;
   
-  QSettings file(info(filepath).canonicalFilePath(), QSettings::IniFormat);
+  QSettings file(item(filepath), QSettings::IniFormat);
   file.clear();
+  
+  debug() << "name" << file.fileName();
   
   QMutexLocker locker(&p_->mx);    
         
-  file.setValue("local/path",  entry.local.absolutepath);
+  file.setValue("local/path",  storage().info(filepath).filePath());
   file.setValue("local/mtime", entry.local.mtime);
   file.setValue("local/perms", qint32(entry.local.perms));
   file.setValue("local/size",  entry.local.size);
@@ -62,19 +61,29 @@ void database::fs_t::put(const QString& filepath, const db_entry_t& entry)
   
   file.setValue("is_dir",      entry.dir);
   file.setValue("is_bad",      entry.bad);
+  
+  file.sync();
+  if (file.status() != QSettings::NoError) {
+    throw qt_exception_t(QString("Can't put entry to db [%1]").arg(file.fileName()));
+  }
 }
 
 db_entry_t database::fs_t::get(const QString& filepath)
 {
   debug() << "load entry:" << filepath;
   
-  QSettings file(info(filepath).canonicalFilePath(), QSettings::IniFormat);
+  QSettings file(item(filepath), QSettings::IniFormat);
+  
+  file.sync();
+  if (file.status() != QSettings::NoError) {
+    throw qt_exception_t(QString("Can't get entry from db [%1]").arg(file.fileName()));
+  }
   
   return db_entry_t(
-      "root",
-      info(filepath).absolutePath(),
-      info(filepath).fileName(),
-      stat_t(QString(), info(filepath).absolutePath(), 0, 0, -1),
+      storage().root(),
+      storage().folder(filepath),
+      storage().file(filepath),
+      stat_t(QString(), filepath, 0, 0, -1),
       stat_t(QString(), QString(), 0, 0, -1),
       false
   );
@@ -101,9 +110,9 @@ QStringList database::fs_t::entries(QString folder) const
 }
 
 
-QFileInfo database::fs_t::info(const QString& path) const
+QString database::fs_t::item(const QString& path) const
 {
-  return QFileInfo(p_->dbpath + "/" + path);
+  return p_->dbpath + "/" + path;
 }
 
 

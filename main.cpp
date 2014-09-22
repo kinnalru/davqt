@@ -28,11 +28,12 @@ int main(int argc, char** argv)
 //         QApplication::setQuitOnLastWindowClosed(false);
 
 
-        auto db = new database::fs_t("/tmp/1");
+        storage_t storage("/tmp/dav/", "/sdf");
+        auto db = new database::fs_t(storage, "/tmp/dav/db");
         
-        //db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
-        db->get("test");
-        
+        db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
+        db->put("test", db_entry_t("r", "f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
+
         main_window_t m;
         m.show();
         
