@@ -36,6 +36,7 @@ set(HEADERS
     database/db.h
     storage.h
     handlers.h
+    database/entry.h
 )
 
 set(MOC
@@ -55,6 +56,7 @@ set(SOURCES
     main_window.cpp
     storage.cpp
     session.cpp
+    database/entry.cpp
     sync.cpp
     settings/main_settings.cpp
 )

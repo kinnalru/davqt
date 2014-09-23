@@ -38,23 +38,21 @@ database::fs_t::~fs_t()
 {
 }
 
-void database::fs_t::put(const QString& filepath, const db_entry_t& entry)
+void database::fs_t::put(const QString& absolutefilepath, const database::entry_t& entry)
 {
-  debug() << "save entry:" << filepath;
+  debug() << "save entry:" << absolutefilepath;
   
-  QSettings file(item(filepath), QSettings::IniFormat);
+  QSettings file(item(absolutefilepath), QSettings::IniFormat);
   file.clear();
   
   debug() << "name" << file.fileName();
   
   QMutexLocker locker(&p_->mx);    
         
-  file.setValue("local/path",  storage().info(filepath).filePath());
   file.setValue("local/mtime", entry.local.mtime);
   file.setValue("local/perms", qint32(entry.local.perms));
   file.setValue("local/size",  entry.local.size);
   
-  file.setValue("remote/path",  entry.remote.absolutepath);
   file.setValue("remote/mtime", entry.remote.mtime);
   file.setValue("remote/perms", qint32(entry.remote.perms));
   file.setValue("remote/size",  entry.remote.size);
@@ -68,7 +66,7 @@ void database::fs_t::put(const QString& filepath, const db_entry_t& entry)
   }
 }
 
-db_entry_t database::fs_t::get(const QString& filepath)
+database::entry_t database::fs_t::get(const QString& filepath)
 {
   debug() << "load entry:" << filepath;
   
@@ -79,34 +77,50 @@ db_entry_t database::fs_t::get(const QString& filepath)
     throw qt_exception_t(QString("Can't get entry from db [%1]").arg(file.fileName()));
   }
   
-  return db_entry_t(
-      storage().root(),
-      storage().folder(filepath),
-      storage().file(filepath),
-      stat_t(QString(), filepath, 0, 0, -1),
-      stat_t(QString(), QString(), 0, 0, -1),
-      false
+  
+  const stat_t local("", storage().file_path(filepath)
+    , file.value("local/mtime").value<qlonglong>()
+    , QFile::Permissions(file.value("local/perms").toInt())
+    , file.value("local/size").value<qulonglong>()
+  );
+  
+  const stat_t remote("", storage().file_path(filepath)
+    , file.value("remote/mtime").value<qlonglong>()
+    , QFile::Permissions(file.value("remote/perms").toInt())
+    , file.value("remote/size").value<qulonglong>()
   );
 
-  return db_entry_t();
+  qDebug() << filepath;
+  qDebug() << storage().folder(filepath);
+  
+  return entry_t(
+      storage().folder(filepath),
+      storage().file(filepath),
+      local,
+      remote,
+      file.value("is_dir").value<bool>()
+  );
+
+  return entry_t();
   
 }
 
 
-void database::fs_t::remove(const QString& absolutefilepath)
+void database::fs_t::remove(const QString& filepath)
 {
-
+  debug() << "removing entry:" << filepath;
+  QFile::remove(item(filepath));
 }
 
 QStringList database::fs_t::folders(QString folder) const
 {
-
+  return QDir(item(folder)).entryList(QDir::AllDirs | QDir::NoDotAndDotDot, QDir::DirsFirst);
 }
 
 
 QStringList database::fs_t::entries(QString folder) const
 {
-
+  return QDir(item(folder)).entryList(QDir::AllEntries | QDir::NoDotAndDotDot, QDir::DirsFirst);
 }
 
 
@@ -115,5 +129,77 @@ QString database::fs_t::item(const QString& path) const
   return p_->dbpath + "/" + path;
 }
 
+
+
+
+
+
+
+
+
+namespace {
+  
+const bool self_test = [] () {
+  
+  {
+    qDebug() << "FS test 1";
+    
+    storage_t storage("/tmp/davtest", "files");
+    database::fs_t fs(storage, "/tmp/davtest/db");
+    
+    QFile f("/tmp/davtest/tmp");
+    f.open(QIODevice::ReadWrite | QIODevice::Truncate);
+    f.write("12345");
+    f.close();
+    
+    QFileInfo info("/tmp/davtest/tmp");
+    
+    fs.put("/tmp", database::entry_t("/", "tmp", info, info, false));
+    auto entry = fs.get("/tmp");
+
+    Q_ASSERT(entry.name == "tmp");
+    Q_ASSERT(entry.folder == "");
+    
+    Q_ASSERT(entry.local.mtime == entry.remote.mtime);
+    Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());
+    Q_ASSERT(entry.local.size == info.size());
+    Q_ASSERT(entry.local.perms == info.permissions());
+  }
+  
+  {
+    qDebug() << "FS test 2";
+    
+    storage_t storage("/tmp/davtest", "files");
+    database::fs_t fs(storage, "/tmp/davtest/db");
+    
+    QFile f("/tmp/davtest/tmp2");
+    f.open(QIODevice::ReadWrite | QIODevice::Truncate);
+    f.write("12345");
+    f.close();
+    
+    QFileInfo info("/tmp/davtest/tmp2");
+    
+    fs.put("/sub1/sub2/file", database::entry_t("/", "/sub1/sub2/file", info, info, false));
+    auto entry = fs.get("/sub1/sub2/file");
+
+    qDebug() << entry.folder;
+    
+    Q_ASSERT(entry.name == "file");
+    Q_ASSERT(entry.folder == "/sub1/sub2");
+    
+    Q_ASSERT(entry.local.mtime == entry.remote.mtime);
+    Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());
+    Q_ASSERT(entry.local.size == info.size());
+    Q_ASSERT(entry.local.perms == info.permissions());
+    
+    fs.remove("/sub1/sub2/file");
+  }
+  
+   
+  
+  return true;
+}();
+
+}
 
 

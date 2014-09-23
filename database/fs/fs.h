@@ -11,9 +11,9 @@ struct fs_t: public database_t {
   fs_t(const storage_t& s, const QString& dbpath);
   ~fs_t();
 
-  virtual void put(const QString& absolutefilepath, const db_entry_t& entry);
-  virtual db_entry_t get(const QString& absolutefilepath);
-  virtual void remove(const QString& absolutefilepath);
+  virtual void put(const QString& filepath, const entry_t& entry);
+  virtual entry_t get(const QString& filepath);
+  virtual void remove(const QString& filepath);
   
   virtual QStringList entries(QString folder) const;
   virtual QStringList folders(QString folder) const;

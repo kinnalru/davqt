@@ -1,15 +1,19 @@
 #pragma once
 
 #include "storage.h"
+
 #include "db.h"
+#include "entry.h"
+
+namespace database {
 
 struct database_t {
   
   database_t(const storage_t& s) : storage_(s) {}
   virtual ~database_t() {}
 
-  virtual void put(const QString& absolutefilepath, const db_entry_t& entry) = 0;
-  virtual db_entry_t get(const QString& absolutefilepath) = 0;
+  virtual void put(const QString& absolutefilepath, const entry_t& entry) = 0;
+  virtual entry_t get(const QString& absolutefilepath) = 0;
   virtual void remove(const QString& absolutefilepath) = 0;
   
   virtual QStringList entries(QString folder) const = 0;
@@ -24,3 +28,6 @@ protected:
 private:
   const storage_t& storage_;
 };
+
+
+}
