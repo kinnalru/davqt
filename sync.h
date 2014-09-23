@@ -38,7 +38,7 @@ public:
         QString password;
     };
     
-    thread_manager_t(QObject* parent, connection conn, const QString& localfolder, const QString& remotefolder);
+    thread_manager_t(QObject* parent, database_p db, connection conn, const QString& localfolder, const QString& remotefolder);
     virtual ~thread_manager_t();
     
     bool is_busy();

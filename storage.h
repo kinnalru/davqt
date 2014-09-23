@@ -11,8 +11,8 @@ struct storage_t {
   storage_t(const QString& root, const QString& path);
   ~storage_t();
   
-  const QString& root() const;
-  const QString& path() const;
+    QString root() const;
+    QString path() const;
   QString prefix() const;
   
   QFileInfo info(const QString& file) const;

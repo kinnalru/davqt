@@ -7,7 +7,7 @@
 #include <QMutex>
 
 #include "types.h"
-
+/*
 struct db_t {
 
     static const QString prefix;
@@ -49,4 +49,4 @@ private:
     
     typedef std::map<QString, db_entry_t> FolderDb;
     std::map<QString, FolderDb> db_;
-};
+};*/

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "storage.h"
 
 #include "db.h"
@@ -31,3 +33,5 @@ private:
 
 
 }
+
+typedef std::shared_ptr<database::database_t> database_p;

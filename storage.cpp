@@ -7,8 +7,8 @@
 
 
 struct storage_t::Pimpl {
-  QString root;
-  QString path;
+  QDir root;
+  QDir path;
 };
 
 
@@ -16,60 +16,47 @@ storage_t::storage_t(const QString& root, const QString& path)
   : p_(new Pimpl)
 {
   {
-    QDir dir(root);
-    if (!dir.exists()) {
-      if (!dir.mkpath(".")) {
-        throw qt_exception_t(QString("Can't use root dir [%1]").arg(root));
+    p_->root = QDir(root);
+    if (!p_->root.exists()) {
+      if (!p_->root.mkpath(".")) {
+        throw qt_exception_t(QString("Can't use root dir [%1]").arg(p_->root.absolutePath()));
       }
     }
-    p_->root = dir.canonicalPath();
     
+    p_->path = QDir(root + QDir::separator() + path);
     
-    p_->path = dir.relativeFilePath(QString(path).replace(QRegExp("^[/]*"), ""));
-    
-    if (!p_->path.isEmpty() && !dir.exists(p_->path)) {
-      if (!p_->path.isEmpty() &&!dir.mkpath(p_->path)) {
-        throw qt_exception_t(QString("Can't use path dir [%1]").arg(root + "/" + path));
+    if (!p_->path.exists()) {
+      if (!p_->path.mkpath(".")) {
+        throw qt_exception_t(QString("Can't use path dir [%1]").arg(p_->path.absolutePath()));
       }
     }
   }
-  
-//   {
-//     QDir dir(root + "/" + path);
-//     if (!dir.exists()) {
-//       if (!dir.mkpath(".")) {
-//         throw qt_exception_t(QString("Can't use path dir [%1]").arg(dir.canonicalPath()));
-//       }
-//     }
-//     p_->path = dir.canonicalPath().replace(p_->root, "");
-//   }
 
-  qDebug() << QString("Storage created at [%1]/[%2]").arg(p_->root).arg(p_->path);
+  qDebug() << QString("Storage created at [%1]/[%2]").arg(p_->root.absolutePath()).arg(p_->root.relativeFilePath(p_->path.absolutePath()));
 }
 
 storage_t::~storage_t()
 {
 }
 
-const QString& storage_t::root() const
+QString storage_t::root() const
 {
-  return p_->root;
+  return p_->root.absolutePath();
 }
 
-const QString& storage_t::path() const
+QString storage_t::path() const
 {
-  return p_->path;
+  qDebug() << "p:" << p_->path.absolutePath();
+  return p_->root.relativeFilePath(p_->path.absolutePath());
 }
 
 QString storage_t::prefix() const
 {
-  return QDir(p_->root).absoluteFilePath(p_->path);
+  return p_->path.absolutePath();
 }
-
 
 QFileInfo storage_t::info(const QString& file) const
 {
-//   QFileInfo
   return (file.startsWith(prefix()))
     ? QFileInfo(file)
     : QFileInfo(prefix() + "/" + file);
@@ -79,7 +66,6 @@ QString storage_t::file(const QString& file) const
 {
   return info(file).fileName();
 }
-
 
 QString storage_t::folder(const QString& file) const
 {
@@ -108,6 +94,8 @@ const bool self_test = [] () {
     storage_t storage("/tmp/davtest", "files");
     
     Q_ASSERT(storage.root() == "/tmp/davtest");
+    
+    qDebug() << storage.path();
     Q_ASSERT(storage.path() == "files");
     Q_ASSERT(storage.prefix() == "/tmp/davtest/files");
     

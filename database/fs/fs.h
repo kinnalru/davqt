@@ -15,11 +15,11 @@ struct fs_t: public database_t {
   virtual entry_t get(const QString& filepath);
   virtual void remove(const QString& filepath);
   
-  virtual QStringList entries(QString folder) const;
-  virtual QStringList folders(QString folder) const;
+  virtual QStringList entries(QString folder = QString()) const;
+  virtual QStringList folders(QString folder = QString()) const;
 
 private:
-  QString item(const QString& path) const;
+  QString item(QString path) const;
   
 private:
   struct Pimpl;

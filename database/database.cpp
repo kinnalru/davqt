@@ -8,7 +8,7 @@ const QString local_c = "local";
 const QString remote_c = "remote";
 const QString folder_c = "folder";
 const QString bad_c = "bad";
-
+/*
 const QString db_t::prefix = ".davqt";
 const QString db_t::tmpprefix = ".davtmp";
 
@@ -205,5 +205,5 @@ QStringList db_t::folders(QString folder) const
         }
     }
     return items;
-}
+}*/
 

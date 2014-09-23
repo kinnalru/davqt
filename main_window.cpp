@@ -37,6 +37,9 @@
 
 struct main_window_t::Pimpl {
     Ui_main ui;
+    
+    database_p db;
+    
     thread_manager_t* manager;
     Actions actions;
     QSystemTrayIcon* tray;
@@ -48,10 +51,11 @@ struct main_window_t::Pimpl {
 
 QDateTime start_time_c;
 
-main_window_t::main_window_t(QWidget* parent)
-    : QWidget(parent)
+main_window_t::main_window_t(database_p db)
+    : QWidget(NULL)
     , p_(new Pimpl())
 {
+    p_->db = db;
     p_->ui.setupUi(this);
 
     QMenu* menu = new QMenu();
@@ -156,7 +160,7 @@ void main_window_t::restart()
         settings().password()
     };
     
-    p_->manager = new thread_manager_t(0, conn, settings().localfolder(), url.path() + settings().remotefolder());
+    p_->manager = new thread_manager_t(0, p_->db, conn, settings().localfolder(), url.path() + settings().remotefolder());
 
     Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));
     Q_VERIFY(connect(p_->manager, SIGNAL(status_error(QString)), this, SLOT(status_error(QString))));             

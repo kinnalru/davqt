@@ -53,8 +53,6 @@ struct stat_t {
         , mtime(info.mtime), perms(info.perms), size(info.size) {}
     
     stat_t(const QVariantMap& data) {
-        etag = data["etag"].toString();
-        absolutepath = data["absolutepath"].toString();
         mtime = data["mtime"].toLongLong();
         perms = QFile::Permissions(data["perms"].toInt());
         size = data["size"].toULongLong();
@@ -69,8 +67,6 @@ struct stat_t {
     
     inline QVariantMap dump() const {
         QVariantMap data;
-        data["etag"] = etag;
-        data["absolutepath"] = absolutepath;
         data["mtime"] = mtime;
         data["perms"] = static_cast<int>(perms);
         data["size"] = size;

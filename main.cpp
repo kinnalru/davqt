@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 #include <neon/ne_socket.h>
@@ -27,14 +28,11 @@ int main(int argc, char** argv)
 
 //         QApplication::setQuitOnLastWindowClosed(false);
 
+        const QString path = "";
+        storage_t storage("/tmp/davroot/files", path);
+        database_p db(new database::fs_t(storage, "/tmp/davroot/db"));
         
-        storage_t storage("/tmp/dav/", "/sdf");
-        auto db = new database::fs_t(storage, "/tmp/dav/db");
-        
-        db->put("test", database::entry_t("f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
-        db->put("test", database::entry_t("f", "n", stat_t("etag", "local_path", 123, QFile::ReadOther, 333), stat_t("etag", "remote_path", 123, QFile::ReadOther, 444), false));
-
-        main_window_t m;
+        main_window_t m(db);
         m.show();
         
         return app.exec();

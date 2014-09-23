@@ -31,7 +31,7 @@ class main_window_t : public QWidget
 {
     Q_OBJECT
 public:
-    main_window_t(QWidget* parent = NULL);
+    main_window_t(database_p db);
     virtual ~main_window_t();
     
     void restart();
