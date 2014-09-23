@@ -4,6 +4,7 @@
 #include <string>
 #include <stdexcept>
 
+#include <QDebug>
 #include <QString>
 #include <QFileInfo>
 #include <QDateTime>
@@ -110,16 +111,23 @@ struct action_t {
         error         = 0,        
         upload        = 1 << 0,
         download      = 1 << 1,
-        local_changed = 1 << 2,
-        remote_changed= 1 << 3,
-        unchanged     = 1 << 4,
-        conflict      = 1 << 5,
-        both_deleted  = 1 << 6,
-        local_deleted = 1 << 7,
-        remote_deleted= 1 << 8,
-        upload_dir    = 1 << 9,
-        download_dir  = 1 << 10,
+        compare       = 1 << 2,
+        forgot        = 1 << 3,
+        remove_local  = 1 << 4,
+        remove_remote = 1 << 5,
+        
+        local_changed = 1 << 6,
+        remote_changed= 1 << 7,
+        unchanged     = 1 << 8,
+        conflict      = 1 << 9,
+        
+        upload_dir    = 1 << 10,
+        download_dir  = 1 << 11,
     } type;
+    
+    
+    
+    
     
     action_t(type_e t, const QString& lf, const QString& rf, const stat_t& l, const stat_t& r)
         : type(t), local_file(lf), remote_file(rf), local(l), remote(r)
@@ -142,6 +150,20 @@ struct action_t {
     stat_t remote;
 };
 
+inline QDebug operator<<(QDebug dbg, const action_t &a)
+{
+    dbg.nospace() << "#action_t(" << "type:" << a.type << a.local_file << " <=> " << a.remote_file << ")";
+
+    return dbg.space();
+}
+
+struct connection_t {
+  QString schema;
+  QString host;
+  quint32 port;
+  QString login;
+  QString password;
+};
 
 typedef QList<action_t> Actions;
 

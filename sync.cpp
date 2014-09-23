@@ -288,36 +288,36 @@ QList<action_t> handle_dirs(database_p db, session_t& session, const QString& lo
     }
     
     Q_FOREACH(const QString& file, snap.local_exists) {
-        const QString localdir = localfolder + "/" + file;
-        const QString remotedir = remotefolder + "/" + file;
-        
-        if (!snap.remote_entries.contains(file)) {
-            auto fileinfo = find_info(snap.local_cache, file);
-            Q_ASSERT(fileinfo != snap.local_cache.end());            
-            qDebug() << "dir " << file << " deleted on server must be deleted localy";
-            actions.push_back(action_t(action_t::remote_deleted,
-                localdir,
-                remotedir,
-                *fileinfo,
-                stat_t()));            
-        }
-        else {
-            qDebug() << "dir " << file << " just exists on server - normal recursion";
-            try {
-                actions << scan_and_compare(db, session, localdir, remotedir);
-            } catch(const std::exception& e) {
-                qCritical() << "ERROR: Can't handle internal dir:" << e.what();
-                actions.push_back(action_t(action_t::error,
-                    localdir,
-                    remotedir,
-                    *find_info(snap.local_cache, file),
-                    *find_resource(snap.remote_cache, file)));  
-            }
-        } 
+//         const QString localdir = localfolder + "/" + file;
+//         const QString remotedir = remotefolder + "/" + file;
+//         
+//         if (!snap.remote_entries.contains(file)) {
+//             auto fileinfo = find_info(snap.local_cache, file);
+//             Q_ASSERT(fileinfo != snap.local_cache.end());            
+//             qDebug() << "dir " << file << " deleted on server must be deleted localy";
+//             actions.push_back(action_t(action_t::remote_deleted,
+//                 localdir,
+//                 remotedir,
+//                 *fileinfo,
+//                 stat_t()));            
+//         }
+//         else {
+//             qDebug() << "dir " << file << " just exists on server - normal recursion";
+//             try {
+//                 actions << scan_and_compare(db, session, localdir, remotedir);
+//             } catch(const std::exception& e) {
+//                 qCritical() << "ERROR: Can't handle internal dir:" << e.what();
+//                 actions.push_back(action_t(action_t::error,
+//                     localdir,
+//                     remotedir,
+//                     *find_info(snap.local_cache, file),
+//                     *find_resource(snap.remote_cache, file)));  
+//             }
+//         } 
     }
     
     Q_FOREACH(const QString& file, snap.remote_added) {
-        const QString localdir = localfolder + "/" + file;
+/*        const QString localdir = localfolder + "/" + file;
         const QString remotedir = remotefolder + "/" + file;
         qDebug() << "unhandler remote dir:" << file << " must be downloaded";
         
@@ -327,7 +327,7 @@ QList<action_t> handle_dirs(database_p db, session_t& session, const QString& lo
             localdir,
             remotedir,
             stat_t(),
-            *resource));          
+            *resource));   */       
     }
     
     return actions;
@@ -386,29 +386,29 @@ QList<action_t> scan_and_compare(database_p db, session_t& session, const QStrin
     
     {
         // Step 1 - making snapshot in filenames of local/remote 'filesystem'
-        const snapshot_data filesnap(
-            remote_cache,
-            local_cache,
-            justNames(local_cache, files),
-            QSet<QString>::fromList(db->entries(localfolder)),
-            remoteNames(remote_cache, files)
-        );
-
-        actions << handle_files(db, localfolder, remotefolder, filesnap);
+//         const snapshot_data filesnap(
+//             remote_cache,
+//             local_cache,
+//             justNames(local_cache, files),
+//             QSet<QString>::fromList(db->entries(localfolder)),
+//             remoteNames(remote_cache, files)
+//         );
+// 
+//         actions << handle_files(db, localfolder, remotefolder, filesnap);
     }
     
      
     {
         // Step 2 - making snapshot in directories of local/remote 'filesystem'
-        const snapshot_data dirsnap(
-            remote_cache,
-            local_cache,        
-            justNames(local_cache, folders),
-            QSet<QString>::fromList(db->folders(localfolder)),
-            remoteNames(remote_cache, folders)
-        );
-        
-        actions << handle_dirs(db, session, localfolder, remotefolder, dirsnap);    
+//         const snapshot_data dirsnap(
+//             remote_cache,
+//             local_cache,        
+//             justNames(local_cache, folders),
+//             QSet<QString>::fromList(db->folders(localfolder)),
+//             remoteNames(remote_cache, folders)
+//         );
+//         
+//         actions << handle_dirs(db, session, localfolder, remotefolder, dirsnap);    
     }
     
     return actions;

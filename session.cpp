@@ -444,6 +444,7 @@ bool session_t::is_closed() const
 
 
 QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
+    unescaped_path.prepend("/");
     unescaped_path.replace("///", "/");
     unescaped_path.replace("//", "/"); 
 //     if (unescaped_path.right(1) == "/") 

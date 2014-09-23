@@ -12,11 +12,12 @@ struct fs_t: public database_t {
   ~fs_t();
 
   virtual void put(const QString& filepath, const entry_t& entry);
-  virtual entry_t get(const QString& filepath);
+  virtual entry_t get(const QString& filepath) const;
   virtual void remove(const QString& filepath);
   
-  virtual QStringList entries(QString folder = QString()) const;
-  virtual QStringList folders(QString folder = QString()) const;
+  virtual QList<entry_t> entries(QString folder = QString()) const;
+//   virtual QStringList folders(QString folder = QString()) const;
+//   virtual QStringList files(QString folder = QString()) const;
 
 private:
   QString item(QString path) const;

@@ -32,33 +32,36 @@ add_subdirectory(3rdparty/preferences)
 
 set(HEADERS
     database/database.h
-    database/fs/fs.h
     database/db.h
-    storage.h
-    handlers.h
     database/entry.h
+    database/fs/fs.h
+    handlers.h
+    storage.h
 )
 
 set(MOC
     main_window.h
     session.h
+    settings/main_settings.h
+    settings/settings.h
     sync.h    
     tools.h
-    settings/settings.h
-    settings/main_settings.h
+    updater.h
+    types.h
 )
 
 set(SOURCES 
     database/database.cpp
+    database/entry.cpp
     database/fs/fs.cpp
     handlers.cpp
     main.cpp
     main_window.cpp
-    storage.cpp
     session.cpp
-    database/entry.cpp
-    sync.cpp
     settings/main_settings.cpp
+    storage.cpp
+    sync.cpp
+    updater.cpp
 )
 
 set(IFACES

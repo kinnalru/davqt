@@ -8,9 +8,9 @@
 #include <QApplication>
 #include <QTextCodec>
 
-#include "main_window.h"
-
+#include "settings/settings.h"
 #include "database/fs/fs.h"
+#include "main_window.h"
 #include "types.h"
 
 int main(int argc, char** argv)
@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 
 //         QApplication::setQuitOnLastWindowClosed(false);
 
-        const QString path = "";
+        const QString path = settings().remotefolder();
         storage_t storage("/tmp/davroot/files", path);
         database_p db(new database::fs_t(storage, "/tmp/davroot/db"));
         

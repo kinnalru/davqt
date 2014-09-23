@@ -59,7 +59,7 @@ QFileInfo storage_t::info(const QString& file) const
 {
   return (file.startsWith(prefix()))
     ? QFileInfo(file)
-    : QFileInfo(prefix() + "/" + file);
+    : QFileInfo(prefix() + QDir::separator() + file);
 }
 
 QString storage_t::file(const QString& file) const
@@ -69,15 +69,30 @@ QString storage_t::file(const QString& file) const
 
 QString storage_t::folder(const QString& file) const
 {
-  return info(file).dir().path().replace(prefix(), "").replace("//", "/");
+  QString dirname = info(file).dir().absolutePath() + "/";
+  return dirname.replace(prefix(), "").replace(QRegExp("^[/]*"), "").replace("//", "/");
 }
 
 QString storage_t::file_path(const QString& file) const
 {
-  return folder(file) + "/" + this->file(file).replace("//", "/");
+  return QString(folder(file) + QDir::separator() + this->file(file)).replace(QRegExp("^[/]*"), "").replace("//", "/");
 }
 
+QFileInfoList storage_t::entries(QString folder) const
+{
+  QDir dir(prefix() + QDir::separator() + folder);
+  if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
+  
+  return dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
+}
 
+QFileInfoList storage_t::folders(QString folder) const
+{
+  QDir dir(prefix() + QDir::separator() + folder);
+  if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
+
+  return dir.entryInfoList(QDir::AllDirs | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
+}
 
 
 
@@ -94,18 +109,16 @@ const bool self_test = [] () {
     storage_t storage("/tmp/davtest", "files");
     
     Q_ASSERT(storage.root() == "/tmp/davtest");
-    
-    qDebug() << storage.path();
     Q_ASSERT(storage.path() == "files");
     Q_ASSERT(storage.prefix() == "/tmp/davtest/files");
     
-    Q_ASSERT(storage.folder("folder1/folder2//fodler3/file") == "/folder1/folder2/fodler3");
+    Q_ASSERT(storage.folder("folder1/folder2//fodler3/file") == "folder1/folder2/fodler3/");
     Q_ASSERT(storage.file("folder1/folder2/fodler3/file") == "file");
-    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "/folder1/folder2/fodler3/file");
+    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "folder1/folder2/fodler3/file");
     
-    Q_ASSERT(storage.folder("folder1/folder2/fodler3/") == "/folder1/folder2/fodler3");
+    Q_ASSERT(storage.folder("folder1/folder2/fodler3/") == "folder1/folder2/fodler3/");
     Q_ASSERT(storage.file("folder1/folder2/fodler3/") == "");
-    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "/folder1/folder2/fodler3/file");
+    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "folder1/folder2/fodler3/file");
   }
   
   {
@@ -114,16 +127,15 @@ const bool self_test = [] () {
     
     Q_ASSERT(storage.root() == "/tmp/davtest");
     Q_ASSERT(storage.path() == "");
-    qDebug() << storage.prefix();
     Q_ASSERT(storage.prefix() == "/tmp/davtest");
     
-    Q_ASSERT(storage.folder("folder1/folder2/fodler3/file") == "/folder1/folder2/fodler3");
+    Q_ASSERT(storage.folder("folder1/folder2/fodler3/file") == "folder1/folder2/fodler3/");
     Q_ASSERT(storage.file("folder1/folder2/fodler3/file") == "file");
-    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "/folder1/folder2/fodler3/file");
+    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "folder1/folder2/fodler3/file");
     
-    Q_ASSERT(storage.folder("folder1/folder2/fodler3/") == "/folder1/folder2/fodler3");
+    Q_ASSERT(storage.folder("folder1/folder2/fodler3/") == "folder1/folder2/fodler3/");
     Q_ASSERT(storage.file("folder1/folder2/fodler3/") == "");
-    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "/folder1/folder2/fodler3/file");
+    Q_ASSERT(storage.file_path("folder1/folder2/fodler3/file") == "folder1/folder2/fodler3/file");
   }
   
    

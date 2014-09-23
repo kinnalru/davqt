@@ -36,6 +36,10 @@ struct entry_t {
     return ret;
   }
   
+  QString filePath() const {
+    return QString(folder + "/" + name).replace("//", "");
+  }
+  
   QString folder;
   QString name;
   

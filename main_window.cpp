@@ -19,11 +19,13 @@
 
 #include <QDebug>
 #include <QUrl>
+#include <qmetaobject.h>
 #include <QProgressBar>
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QMessageBox>
 #include <qprogressdialog.h>
+#include <QProcess>
 
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
@@ -264,17 +266,56 @@ void main_window_t::sync()
         force_sync();
 }
 
+struct MyThread: public QThread {
+  explicit MyThread() {
+    qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
+  }
+  
+    virtual ~MyThread() {
+      qDebug() << "<<<<< THREAD destroyed";
+    }
+  
+
+};
+
+void initialize_thread(QObject* object) {
+  MyThread* th = new MyThread();
+  Q_VERIFY(th->connect(th, SIGNAL(finished()), th, SLOT(deleteLater())));  
+  th->start();
+  object->moveToThread(th);
+  Q_VERIFY(object->connect(object, SIGNAL(destroyed(QObject*)), th, SLOT(quit())));
+}
+
+#include "updater.h"
+
 void main_window_t::force_sync()
 {
-    qDebug() << Q_FUNC_INFO << "Busy:" << p_->manager->is_busy(); 
-    
-    if (!p_->manager->is_busy()) {
-        qDebug() << "main sync3";
-        Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
-            start_sync();
-        }));
-        p_->manager->update_status();
-    }
+  const QUrl url(settings().host());
+  
+  connection_t conn = {
+      url.scheme(),
+      url.host(),
+      url.port(),
+      settings().username(),
+      settings().password()
+  };
+  
+  updater_t* u = new updater_t(p_->db, conn);
+  initialize_thread(u);
+  
+  Q_VERIFY(connect(u, SIGNAL(status(Actions)), this, SLOT(status_updated(Actions))));
+  
+  QTimer::singleShot(0, u, SLOT(start()));
+  
+//     qDebug() << Q_FUNC_INFO << "Busy:" << p_->manager->is_busy(); 
+//     
+//     if (!p_->manager->is_busy()) {
+//         qDebug() << "main sync3";
+//         Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
+//             start_sync();
+//         }));
+//         p_->manager->update_status();
+//     }
 }
 
 
@@ -306,18 +347,22 @@ void main_window_t::status_updated(const Actions& actions)
                 return list.front();
             }
         };
+
         
         switch(type) {
-            case action_t::error:       return find(tr("Errors"));
-            case action_t::upload:      return find(tr("Files to upload"));
-            case action_t::download:        return find(tr("Files to download"));
+            case action_t::error:          return find(tr("Errors"));
+            case action_t::upload:         return find(tr("Files to upload"));
+            case action_t::download:       return find(tr("Files to download"));
+            case action_t::compare:        return find(tr("Files to compare"));
+            case action_t::forgot:         return find(tr("Files to Forgot"));
+            case action_t::remove_local:   return find(tr("Files to remove local"));
+            case action_t::remove_remote:  return find(tr("Files to remove remote"));
+            
             case action_t::local_changed:   return find(tr("Upload local changes"));
             case action_t::remote_changed:  return find(tr("Download remote changes"));
             case action_t::unchanged:       return find(tr("Unchanged"));
             case action_t::conflict:        return find(tr("Conflicts"));
-            case action_t::both_deleted:    return find(tr("Deleted"));
-            case action_t::local_deleted:   return find(tr("Locally deleted"));
-            case action_t::remote_deleted:  return find(tr("Remotely deleted"));
+            
             case action_t::upload_dir:      return find(tr("Folders to upload"));
             case action_t::download_dir:    return find(tr("Folders to download"));
             default: Q_ASSERT(!"unhandled action type");

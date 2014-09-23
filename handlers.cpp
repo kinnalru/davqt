@@ -395,20 +395,20 @@ action_processor_t::action_processor_t(session_t& session, database::database_t&
     , db_(db)
 {
     handlers_ = {
-        {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
-        {action_t::download, download_handler()},
-        {action_t::local_changed, local_change_handler()},    //FIXME check remote etag NOT changed
-        {action_t::remote_changed, remote_change_handler()},
-        {action_t::conflict, conflict_handler(comparer, resolver)},
-        {action_t::both_deleted, both_deleted_handler()},
-        {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
-        {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed
-        {action_t::upload_dir, upload_dir_handler()},
-        {action_t::download_dir, download_dir_handler()},
-        {action_t::unchanged, [] (session_t& session, database::database_t& db, const action_t& action) {}},
-        {action_t::error, [] (session_t& session, database::database_t& db, const action_t& action) {
-            throw qt_exception_t(QObject::tr("Action precondition failed"));
-        }}
+//         {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
+//         {action_t::download, download_handler()},
+//         {action_t::local_changed, local_change_handler()},    //FIXME check remote etag NOT changed
+//         {action_t::remote_changed, remote_change_handler()},
+//         {action_t::conflict, conflict_handler(comparer, resolver)},
+//         {action_t::both_deleted, both_deleted_handler()},
+//         {action_t::local_deleted, local_deleted_handler()},  //FIXME check remote etag NOT changed
+//         {action_t::remote_deleted, remote_deleted_handler()},//FIXME check local NOT changed
+//         {action_t::upload_dir, upload_dir_handler()},
+//         {action_t::download_dir, download_dir_handler()},
+//         {action_t::unchanged, [] (session_t& session, database::database_t& db, const action_t& action) {}},
+//         {action_t::error, [] (session_t& session, database::database_t& db, const action_t& action) {
+//             throw qt_exception_t(QObject::tr("Action precondition failed"));
+//         }}
     };
 }
 
