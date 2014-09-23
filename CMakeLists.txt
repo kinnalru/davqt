@@ -47,6 +47,7 @@ set(MOC
     sync.h    
     tools.h
     updater.h
+    syncer.h
     types.h
 )
 
@@ -62,6 +63,7 @@ set(SOURCES
     storage.cpp
     sync.cpp
     updater.cpp
+    syncer.cpp
 )
 
 set(IFACES

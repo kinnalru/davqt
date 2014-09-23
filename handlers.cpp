@@ -9,42 +9,56 @@
 
 #include "handlers.h"
 
+namespace {
+  QDebug debug() {
+    return qDebug() << "[HANDLERS]:";
+  }
+}
+
 struct upload_handler : base_handler_t {
-    void do_check(session_t& session, const action_t& action) const {
-        Q_ASSERT(!action.local.empty()); // local contais NEW "fixed" file stat to upload.
-        Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity check
-        
-        try {
-            auto resources = session.get_resources(action.remote_file);
-        }
-        catch (ne_exception_t& e) {
-            if (e.code() == 404) return;
-        }
-        
-        throw std::runtime_error("Can't upload: file exists on server");
+  void do_check(session_t& session, const action_t& action) const {
+    Q_ASSERT(!action.local.empty()); // local contais NEW "fixed" file stat to upload.
+    Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity check
+    
+    try {
+      auto resources = session.get_resources(action.key);
+    }
+    catch (ne_exception_t& e) {
+      if (e.code() == 404) return;
     }
     
-    void do_request(session_t& session, database::database_t& db, const action_t& action) const {
-        QFile file(action.local.absolutepath);
-        
-        if (!file.open(QIODevice::ReadOnly)) 
-            throw qt_exception_t(QString("Can't open file %1: %2").arg(action.local.absolutepath).arg(file.errorString()));
-        
-        stat_t remotestat = session.put(action.remote_file, file.handle(), db.get(action.local_file).remote.etag);
-        remotestat = session.set_permissions(action.remote_file, action.local.perms, remotestat.etag);
-        remotestat.perms = action.local.perms;
-        
-        if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
-            session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
-        }
-        
-        database::entry_t e = db.get(action.local.absolutepath);
-        e.local = action.local;
-        e.remote = remotestat;
-        e.dir = false;
-        e.bad = false;
-        db.put(e.name, e);
+    throw std::runtime_error("Can't upload: file exists on server");
+  }
+  
+  void do_request(session_t& session, database_p db, const action_t& action) const {
+    const QString local_file = db->storage().absolute_file_path(action.key);
+    const QString remote_file = db->storage().remote_file_path(action.key);
+    
+    QFile file(local_file);
+    
+    if (!file.open(QIODevice::ReadOnly)) 
+      throw qt_exception_t(QString("Can't open file %1: %2").arg(action.key).arg(file.errorString()));
+    
+    debug() << "uploading file...";
+    stat_t remotestat = session.put(remote_file, file.handle());
+    debug() << "updating permissions...";
+    remotestat = session.set_permissions(remote_file, action.local.perms);
+    remotestat.perms = action.local.perms;
+
+    if ( remotestat.mtime == 0 || remotestat.size == -1) {
+        debug() << "additional HEAD request...";        
+        session.head(remote_file, remotestat.mtime, remotestat.size);
     }
+    
+    debug() << "updating DB...";
+    database::entry_t e = db->get(action.key);
+    e.local = action.local;
+    e.remote = remotestat;
+    e.dir = false;
+    e.bad = false;
+    db->put(e.key, e);
+    debug() << "finish";
+  }
 };
 
 struct local_change_handler : upload_handler {
@@ -54,27 +68,27 @@ struct local_change_handler : upload_handler {
     }
 
     void do_request(session_t& session, database::database_t& db, const action_t& action) const {
-        database::entry_t e = db.get(action.local.absolutepath);
-        if (e.local.size == action.local.size &&
-            e.local.mtime == action.local.mtime &&
-            e.local.perms != action.local.perms)
-        {
-            stat_t remotestat = session.set_permissions(action.remote_file, action.local.perms, db.get(action.local_file).remote.etag);
-            remotestat.perms = action.local.perms;
-
-            if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
-                session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
-            }
-
-            e.local = action.local;
-            e.remote = remotestat;
-            e.dir = false;
-            e.bad = false;
-            db.put(e.name, e);
-        }
-        else {
-            upload_handler::do_request(session, db, action);
-        }
+//         database::entry_t e = db.get(action.local.absolutepath);
+//         if (e.local.size == action.local.size &&
+//             e.local.mtime == action.local.mtime &&
+//             e.local.perms != action.local.perms)
+//         {
+//             stat_t remotestat = session.set_permissions(action.remote_file, action.local.perms, db.get(action.local_file).remote.etag);
+//             remotestat.perms = action.local.perms;
+// 
+//             if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
+//                 session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
+//             }
+// 
+//             e.local = action.local;
+//             e.remote = remotestat;
+//             e.dir = false;
+//             e.bad = false;
+//             db.put(e.name, e);
+//         }
+//         else {
+//             upload_handler::do_request(session, db, action);
+//         }
     }
 };
 
@@ -82,8 +96,8 @@ struct download_handler : base_handler_t {
     void do_check(session_t& session, const action_t& action) const {
         Q_ASSERT(action.local.empty());  // local MUST not exists - sanity check
         Q_ASSERT(!action.remote.empty());// remote contains stat do down load not "fixed"
-        if (QFileInfo(action.local_file).exists())
-            throw std::runtime_error("Can't download: file exists");
+//         if (QFileInfo(action.local_file).exists())
+//             throw std::runtime_error("Can't download: file exists");
     }
     
     void do_request(session_t& session, database::database_t& db, const action_t& action) const {
@@ -220,18 +234,18 @@ struct both_deleted_handler : base_handler_t {
         Q_ASSERT(action.local.empty()); // local MUST not exists - sanity check
         Q_ASSERT(action.remote.empty());// remote MUST not exists - sanity check
         
-        try {
-            auto resources = session.get_resources(action.remote_file);
-        }
-        catch (ne_exception_t& e) {
-            if (e.code() == 404 && !QFileInfo(action.local_file).exists()) return;
-        }
-        
-        throw std::runtime_error("Can't delete BOTH: file exists on server or localy");
+//         try {
+//             auto resources = session.get_resources(action.remote_file);
+//         }
+//         catch (ne_exception_t& e) {
+//             if (e.code() == 404 && !QFileInfo(action.local_file).exists()) return;
+//         }
+//         
+//         throw std::runtime_error("Can't delete BOTH: file exists on server or localy");
     }
     
     void do_request(session_t& session, database::database_t& db, const action_t& action) const {
-        db.remove(action.local_file);
+//         db.remove(action.local_file);
     }
 };
 
@@ -252,33 +266,33 @@ struct remote_deleted_handler : base_handler_t {
         Q_ASSERT(!action.local.empty()); // local MUST not exists - for changes compare 
         Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity
         
-        try {
-            auto resources = session.get_resources(action.remote_file);
-        }
-        catch (ne_exception_t& e) {
-            if (e.code() == 404) return;
-        }
-        throw std::runtime_error("Can't delete remote: file exists on server!");      
+//         try {
+//             auto resources = session.get_resources(action.remote_file);
+//         }
+//         catch (ne_exception_t& e) {
+//             if (e.code() == 404) return;
+//         }
+//         throw std::runtime_error("Can't delete remote: file exists on server!");      
     }
 
     bool remove_dir(const QString & absolutepath) const
     {
-        bool result;
-        QDir dir(absolutepath);
-
-        Q_FOREACH(QFileInfo info, dir.entryInfoList(QDir::NoDotAndDotDot | QDir::System | QDir::Hidden  | QDir::AllDirs | QDir::Files, QDir::DirsFirst)) {
-            if (info.isDir()) {
-                result = remove_dir(info.absoluteFilePath());
-            }
-            else {
-                result = dir.remove(info.absoluteFilePath());
-            }
-
-            if (!result) {
-                return result;
-            }
-        }
-        return dir.rmdir(absolutepath);
+// //         bool result;
+// //         QDir dir(absolutepath);
+// // 
+// //         Q_FOREACH(QFileInfo info, dir.entryInfoList(QDir::NoDotAndDotDot | QDir::System | QDir::Hidden  | QDir::AllDirs | QDir::Files, QDir::DirsFirst)) {
+// //             if (info.isDir()) {
+// //                 result = remove_dir(info.absoluteFilePath());
+// //             }
+// //             else {
+// //                 result = dir.remove(info.absoluteFilePath());
+// //             }
+// // 
+// //             if (!result) {
+// //                 return result;
+// //             }
+// //         }
+// //         return dir.rmdir(absolutepath);
     }
     
     void do_request(session_t& session, database::database_t& db, const action_t& action) const {
@@ -390,12 +404,12 @@ struct download_dir_handler : base_handler_t {
     }
 };
 
-action_processor_t::action_processor_t(session_t& session, database::database_t& db, Comparer comparer, Resolver resolver)
+action_processor_t::action_processor_t(session_t& session, database_p db, action_processor_t::Comparer comparer, action_processor_t::Resolver resolver)
     : session_(session)
     , db_(db)
 {
     handlers_ = {
-//         {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
+      {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
 //         {action_t::download, download_handler()},
 //         {action_t::local_changed, local_change_handler()},    //FIXME check remote etag NOT changed
 //         {action_t::remote_changed, remote_change_handler()},
@@ -414,17 +428,17 @@ action_processor_t::action_processor_t(session_t& session, database::database_t&
 
 void action_processor_t::process(const action_t& action)
 {
-    Q_ASSERT(!action.empty());
+//     Q_ASSERT(!action.empty());
     
-    auto h = handlers_.find(action.type);
-    if (h != handlers_.end()) {
-        qDebug() << "\n >>> processing action: " << action.type << " " << action.local_file << " --> " << action.remote_file;
-        h->second(session_, db_, action);
-        qDebug() << " >>> completed";
-    }
-    else {
-        qCritical() << "unhandled action type!:" << action.type;
-        Q_ASSERT(!"unhandled action type!");
-    }
+  auto h = handlers_.find(action.type);
+  if (h != handlers_.end()) {
+      debug() << QString("processing action: %1 [%2]").arg(action_t::type_text(action.type)).arg(action.key);
+      h->second(session_, db_, action);
+      debug() << "completed";
+  }
+  else {
+//         qCritical() << "unhandled action type!:" << action_t::type_text(action.type);
+//         Q_ASSERT(!"unhandled action type!");
+  }
 }
 

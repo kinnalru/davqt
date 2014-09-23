@@ -70,11 +70,7 @@ action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, co
         qDebug() << " -> remote permissions changed:" << dbentry.remote.perms << " -> " << remote.perms;
     }
     
-    if (dbentry.remote.etag != remote.etag) {
-        mask |= action_t::remote_changed;
-        qDebug() << " -> etag changed:" << dbentry.remote.etag << " -> " << remote.etag;
-    }
-    
+   
     if (dbentry.bad) {
         mask |= action_t::local_changed;
     }
@@ -688,7 +684,7 @@ void thread_manager_t::sync_thread()
         if (p_->abort) break;
         if (p_->stop) continue;    
         
-        if (current.empty()) continue;
+//         if (current.empty()) continue;
         
         try {
             session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);

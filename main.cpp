@@ -26,8 +26,6 @@ int main(int argc, char** argv)
         QDir::addSearchPath("icons", QString(":icons/images/"));
         QDir::addSearchPath("images", QString(":icons/images/"));
 
-//         QApplication::setQuitOnLastWindowClosed(false);
-
         const QString path = settings().remotefolder();
         storage_t storage("/tmp/davroot/files", path);
         database_p db(new database::fs_t(storage, "/tmp/davroot/db"));

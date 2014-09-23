@@ -13,16 +13,17 @@ struct database_t {
   
   database_t(const storage_t& s) : storage_(s) {}
   virtual ~database_t() {}
+  
+  virtual QString key(QString path) const;
 
-  virtual void put(const QString& absolutefilepath, const entry_t& entry) = 0;
-  virtual entry_t get(const QString& absolutefilepath) const = 0;
-  virtual void remove(const QString& absolutefilepath) = 0;
+  virtual void put(const QString& key, const entry_t& entry) = 0;
+  virtual entry_t get(const QString& key) const = 0;
+  virtual void remove(const QString& key) = 0;
   
   virtual QList<entry_t> entries(QString folder = QString()) const = 0;
-  
-//   virtual QStringList folders(QString folder = QString()) const = 0;
-//   virtual QStringList files(QString folder = QString()) const = 0;
 
+  entry_t create(QString path, const stat_t& l, const stat_t& r, bool dir) const;
+  
   database_t(const database_t&) = delete;
   database_t& operator=(const database_t&) = delete;
    

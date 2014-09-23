@@ -53,13 +53,13 @@ public:
      *  if etag = "" - there is no etag used
      *  if etag not isEmpty - use it to override file on serveer
      */
-    stat_t put(const QString& unescaped_path, int fd, const QString& etag);
+    stat_t put(const QString& unescaped_path, int fd);
 
-    void head(const QString& unescaped_path, QString& etag, qlonglong& mtime, quint64& length);
+    void head(const QString& unescaped_path, qlonglong& mtime, quint64& length);
 
-    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems, const QString& etag);
+    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems);
     
-    void remove(const QString& unescaped_path, const QString& etag);
+    void remove(const QString& unescaped_path);
 
     stat_t mkcol(const QString& unescaped_path);
    

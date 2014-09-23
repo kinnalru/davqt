@@ -73,28 +73,24 @@ database::entry_t database::fs_t::get(const QString& filepath) const
   }
   
   
-  const stat_t local("", storage().file_path(filepath)
-    , file.value("local/mtime").value<qlonglong>()
+  const stat_t local(
+      file.value("local/mtime").value<qlonglong>()
     , QFile::Permissions(file.value("local/perms").toInt())
     , file.value("local/size").value<qulonglong>()
   );
   
-  const stat_t remote("", storage().file_path(filepath)
-    , file.value("remote/mtime").value<qlonglong>()
+  const stat_t remote(
+      file.value("remote/mtime").value<qlonglong>()
     , QFile::Permissions(file.value("remote/perms").toInt())
     , file.value("remote/size").value<qulonglong>()
   );
 
-  return entry_t(
-      storage().folder(filepath),
-      storage().file(filepath),
+  return create(
+      key(filepath),
       local,
       remote,
       file.value("is_dir").value<bool>()
   );
-
-  return entry_t();
-  
 }
 
 
@@ -141,14 +137,8 @@ QList<database::entry_t> database::fs_t::entries(QString folder) const
 
 QString database::fs_t::item(QString path) const
 {
-  return p_->db.absoluteFilePath(path.replace(p_->db.absolutePath(), "").replace(QRegExp("^[/]*"), "")) + ".davdb";
+  return p_->db.absoluteFilePath(key(path)) + ".davdb";
 }
-
-
-
-
-
-
 
 
 
@@ -169,11 +159,10 @@ const bool self_test = [] () {
     
     QFileInfo info("/tmp/davtest/tmp");
     
-    fs.put("/tmp", database::entry_t("/", "tmp", info, info, false));
+    fs.put("/tmp", fs.create("/tmp", info, info, false));
     auto entry = fs.get("/tmp");
 
-    Q_ASSERT(entry.name == "tmp");
-    Q_ASSERT(entry.folder == "");
+    Q_ASSERT(entry.key == "tmp");
     
     Q_ASSERT(entry.local.mtime == entry.remote.mtime);
     Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());
@@ -194,12 +183,10 @@ const bool self_test = [] () {
     
     QFileInfo info("/tmp/davtest/tmp2");
     
-    fs.put("/sub1/sub2/file", database::entry_t("/", "/sub1/sub2/file", info, info, false));
+    fs.put("/sub1/sub2/file", fs.create("/sub1/sub2/file", info, info, false));
     auto entry = fs.get("/sub1/sub2/file");
 
-    Q_ASSERT(entry.name == "file");
-    qDebug() << entry.folder;
-    Q_ASSERT(entry.folder == "sub1/sub2/");
+    Q_ASSERT(entry.key == "sub1/sub2/file");
     
     Q_ASSERT(entry.local.mtime == entry.remote.mtime);
     Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());

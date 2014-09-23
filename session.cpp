@@ -83,7 +83,7 @@ struct auth_data_t {
 };
 
 struct neon_context_t {
-    QString etag;
+//     QString etag;
     stat_t stat;
     volatile bool& cancell;
     ne_session* session;
@@ -205,21 +205,19 @@ inline QString normalize_etag(const char *etag)
 void create_request_handler(ne_request *req, void *userdata, const char *method, const char *requri) {
     neon_context_t* ctx = reinterpret_cast<neon_context_t*>(userdata);
     
-    if (ctx->etag.isNull()) {
-        ne_add_request_header(req, "If-None-Match", "*");
-    }
-    else if(!ctx->etag.isEmpty()) {
-        ne_add_request_header(req, "If-Match", qPrintable(ctx->etag));
-    }
-    else
-        Q_ASSERT(ctx->etag == "");
+//     if (ctx->etag.isNull()) {
+//         ne_add_request_header(req, "If-None-Match", "*");
+//     }
+//     else if(!ctx->etag.isEmpty()) {
+//         ne_add_request_header(req, "If-Match", qPrintable(ctx->etag));
+//     }
+//     else
+//         Q_ASSERT(ctx->etag == "");
 }
 
 int post_send_handler(ne_request *req, void *userdata, const ne_status *status) {
     
     neon_context_t* ctx = reinterpret_cast<neon_context_t*>(userdata);
-    
-    ctx->stat.etag = normalize_etag(ne_get_response_header(req, "ETag"));
     
     const char *value = ne_get_response_header(req, "Last-Modified");
     if (!value) value = ne_get_response_header(req, "Date");
@@ -478,7 +476,7 @@ QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
 
 
 
-void session_t::head(const QString& unescaped_path, QString& etag, qlonglong& mtime, quint64& length)
+void session_t::head(const QString& unescaped_path, qlonglong& mtime, quint64& length)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
@@ -493,14 +491,8 @@ void session_t::head(const QString& unescaped_path, QString& etag, qlonglong& mt
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
     
-    const char *value = ne_get_response_header(request.get(), "ETag");
-    if (value) {
-        etag = normalize_etag(value);
-    } else {
-        etag.clear();
-    }
-
-    value = ne_get_response_header(request.get(), "Last-Modified");
+    const char *value = ne_get_response_header(request.get(), "Last-Modified");
+    
     if (!value) value = ne_get_response_header(request.get(), "Date");
     if (value) {
         mtime = ne_httpdate_parse(value);
@@ -518,9 +510,9 @@ void session_t::head(const QString& unescaped_path, QString& etag, qlonglong& mt
 
 
 
-stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems, const QString& etag)
+stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems)
 {
-    etag_check_workaround(unescaped_path, etag);
+//     etag_check_workaround(unescaped_path, etag);
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);    
     const std::string value = boost::lexical_cast<std::string>(prems);
@@ -535,19 +527,24 @@ stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissi
     };
     
     neon_context_t ctx{
-        etag,
         stat_t(),
         p_->cancell,
         p_->session.get()
     };  
 
+    sleep(5);
     hook_helper_t hooks(p_->session.get(), &ctx);
+    qDebug() << ">>>";
     int neon_stat = ne_proppatch(p_->session.get(), path.get(), ops);
-    
+
+    qDebug() << "<<<";    
     if (neon_stat != NE_OK) {
+        qDebug() << "!!!";    
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
 
+    qDebug() << "+++";    
+    
     return ctx.stat;
 }
 
@@ -555,7 +552,6 @@ stat_t session_t::get(const QString& unescaped_path, int fd)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     neon_context_t ctx{
-        QString(""),
         stat_t(),
         p_->cancell,
         p_->session.get()
@@ -571,11 +567,10 @@ stat_t session_t::get(const QString& unescaped_path, int fd)
     return ctx.stat;
 }
 
-stat_t session_t::put(const QString& unescaped_path, int fd, const QString& etag)
+stat_t session_t::put(const QString& unescaped_path, int fd)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     neon_context_t ctx{
-        etag,
         stat_t(),
         p_->cancell,
         p_->session.get()
@@ -591,13 +586,12 @@ stat_t session_t::put(const QString& unescaped_path, int fd, const QString& etag
     return ctx.stat;
 }
 
-void session_t::remove(const QString& unescaped_path, const QString& etag)
+void session_t::remove(const QString& unescaped_path)
 {
-    etag_check_workaround(unescaped_path, etag);
+//     etag_check_workaround(unescaped_path, etag);
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     neon_context_t ctx{
-        etag,
         stat_t(),
         p_->cancell,
         p_->session.get()
@@ -621,7 +615,6 @@ stat_t session_t::mkcol(const QString& raw)
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
     neon_context_t ctx{
-        QString(""),
         stat_t(),
         p_->cancell,
         p_->session.get()
@@ -638,26 +631,7 @@ stat_t session_t::mkcol(const QString& raw)
 
 void session_t::etag_check_workaround(const QString& unescaped_path, const QString& etag)
 {
-    try {
-        stat_t stat;                
-        head(unescaped_path, stat.etag, stat.mtime, stat.size);
-        if (etag.isNull()) {
-            throw ne_exception_t(412, "412 (Precondition Failed)");
-        } 
-        else if (!etag.isEmpty() && stat.etag != etag) {
-            throw ne_exception_t(412, "412 (Precondition Failed)");
-        }
-    }
-    catch (ne_exception_t& e) {
-        if (etag.isNull()) {
-            if (e.code() == 404) {
-                //good
-            };    
-        } 
-        else if (!etag.isEmpty()) {
-            throw;
-        }
-    }
+
 }
 
 

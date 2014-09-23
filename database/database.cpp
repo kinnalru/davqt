@@ -4,6 +4,21 @@
 #include "database.h"
 
 
+
+QString database::database_t::key(QString path) const
+{
+  return storage().file_path(path);
+}
+
+database::entry_t database::database_t::create(QString path, const stat_t& l, const stat_t& r, bool dir) const
+{
+  return entry_t(key(path), l, r, dir);
+}
+
+
+
+
+
 const QString local_c = "local";
 const QString remote_c = "remote";
 const QString folder_c = "folder";

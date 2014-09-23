@@ -29,6 +29,8 @@
 
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
+#include "updater.h"
+
 #include "tools.h"
 
 #include "settings/main_settings.h"
@@ -36,6 +38,7 @@
 
 #include "ui_main_window.h"
 #include "main_window.h"
+#include "syncer.h"
 
 struct main_window_t::Pimpl {
     Ui_main ui;
@@ -286,7 +289,7 @@ void initialize_thread(QObject* object) {
   Q_VERIFY(object->connect(object, SIGNAL(destroyed(QObject*)), th, SLOT(quit())));
 }
 
-#include "updater.h"
+
 
 void main_window_t::force_sync()
 {
@@ -301,10 +304,13 @@ void main_window_t::force_sync()
   };
   
   updater_t* u = new updater_t(p_->db, conn);
+  Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
   initialize_thread(u);
   
   Q_VERIFY(connect(u, SIGNAL(status(Actions)), this, SLOT(status_updated(Actions))));
-  
+  Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
+      start_sync();
+  }));
   QTimer::singleShot(0, u, SLOT(start()));
   
 //     qDebug() << Q_FUNC_INFO << "Busy:" << p_->manager->is_busy(); 
@@ -321,13 +327,25 @@ void main_window_t::force_sync()
 
 void main_window_t::start_sync()
 {
-    qDebug() << Q_FUNC_INFO << "Action count:" << p_->actions.size();
-    p_->manager->start(p_->actions);
+  const QUrl url(settings().host());
+  
+  connection_t conn = {
+      url.scheme(),
+      url.host(),
+      url.port(),
+      settings().username(),
+      settings().password()
+  };
+  
+  syncer_t* u = new syncer_t(p_->db, conn, p_->actions);
+  Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
+  initialize_thread(u);
+  
+  QTimer::singleShot(0, u, SLOT(start()));
 }
 
 void main_window_t::status_updated(const Actions& actions)
 {
-    qDebug() << "status_updated";
     auto groupit = [this] (action_t::type_e type) -> QTreeWidgetItem* {
         auto find = [this] (const QString& text) {
             auto list = p_->ui.actions->findItems(text, Qt::MatchExactly);
@@ -358,13 +376,13 @@ void main_window_t::status_updated(const Actions& actions)
             case action_t::remove_local:   return find(tr("Files to remove local"));
             case action_t::remove_remote:  return find(tr("Files to remove remote"));
             
-            case action_t::local_changed:   return find(tr("Upload local changes"));
-            case action_t::remote_changed:  return find(tr("Download remote changes"));
-            case action_t::unchanged:       return find(tr("Unchanged"));
-            case action_t::conflict:        return find(tr("Conflicts"));
+            case action_t::local_changed:  return find(tr("Upload local changes"));
+            case action_t::remote_changed: return find(tr("Download remote changes"));
+            case action_t::unchanged:      return find(tr("Unchanged"));
+            case action_t::conflict:       return find(tr("Conflicts"));
             
-            case action_t::upload_dir:      return find(tr("Folders to upload"));
-            case action_t::download_dir:    return find(tr("Folders to download"));
+            case action_t::upload_dir:     return find(tr("Folders to upload"));
+            case action_t::download_dir:   return find(tr("Folders to download"));
             default: Q_ASSERT(!"unhandled action type");
         };
         return NULL;
@@ -373,13 +391,12 @@ void main_window_t::status_updated(const Actions& actions)
     auto allitems = all_items(p_->ui.actions);
     
     Q_FOREACH(const action_t& action, actions) {
-        qDebug() << "status_updated : " << action.local_file;
         QTreeWidgetItem* group = groupit(action.type);
         if (QProgressBar* pb = get_pb(p_->ui.actions, group)) {
             pb->setMaximum(pb->maximum() + 1);
         }
-        QTreeWidgetItem* item = find_item(p_->ui.actions, action.local_file);
-        if (!item) item = new QTreeWidgetItem(group, QStringList() << action.local_file << tr("Not synced"));
+        QTreeWidgetItem* item = find_item(p_->ui.actions, action.key);
+        if (!item) item = new QTreeWidgetItem(group, QStringList() << action.key << tr("Not synced"));
         
         if (item->parent() != group) {
             item = item->parent()->takeChild(item->parent()->indexOfChild(item));
@@ -427,7 +444,7 @@ void main_window_t::status_error(const QString& error)
 
 void main_window_t::action_started(const action_t& action)
 {
-    auto it = find_item(p_->ui.actions, action.local_file);
+    auto it = find_item(p_->ui.actions, action.key);
     Q_ASSERT(it);
     it->setText(1, tr("In progress..."));
     p_->ui.actions->setItemWidget(it, 2, new QProgressBar());                
@@ -442,7 +459,7 @@ void main_window_t::action_started(const action_t& action)
 
 void main_window_t::action_success(const action_t& action)
 {
-    auto it = find_item(p_->ui.actions, action.local_file);
+    auto it = find_item(p_->ui.actions, action.key);
     Q_ASSERT(it);
     it->setText(1, tr("Completed"));
     action_finished(action);    
@@ -450,7 +467,7 @@ void main_window_t::action_success(const action_t& action)
 
 void main_window_t::action_error(const action_t& action, const QString& message)
 {
-    auto it = find_item(p_->ui.actions, action.local_file);
+    auto it = find_item(p_->ui.actions, action.key);
     Q_ASSERT(it);
     it->setText(1, tr("Error"));
     action_finished(action);    
@@ -459,20 +476,20 @@ void main_window_t::action_error(const action_t& action, const QString& message)
     it->parent()->insertChild(0, it);
     it->treeWidget()->insertTopLevelItem(0, it->parent());
     
-    it = find_item(p_->ui.errors, action.local_file);
+    it = find_item(p_->ui.errors, action.key);
     if (!it) {
-        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.local_file << message);
+        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.key << message);
         p_->ui.errors->addTopLevelItem(item);
     }
     
-    p_->tray->showMessage(tr("Error when sync file %1").arg(action.local_file), message, QSystemTrayIcon::Warning, 7000);
-    p_->tray->setProperty("file", action.local_file);
+    p_->tray->showMessage(tr("Error when sync file %1").arg(action.key), message, QSystemTrayIcon::Warning, 7000);
+    p_->tray->setProperty("file", action.key);
     set_state(error);
 }
 
 void main_window_t::action_progress(const action_t& action, qint64 progress, qint64 total)
 {
-    auto it = find_item(p_->ui.actions, action.local_file);
+    auto it = find_item(p_->ui.actions, action.key);
     Q_ASSERT(it);    
     
     if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
@@ -483,7 +500,7 @@ void main_window_t::action_progress(const action_t& action, qint64 progress, qin
 
 void main_window_t::action_finished(const action_t& action)
 {
-    auto it = find_item(p_->ui.actions, action.local_file);
+    auto it = find_item(p_->ui.actions, action.key);
     Q_ASSERT(it);    
     
     it->setTextColor(0, QPalette().color(it->treeWidget()->foregroundRole()));

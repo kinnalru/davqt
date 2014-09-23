@@ -9,6 +9,8 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QVariant>
+#include <QMetaObject>
+#include <QMetaEnum>
 #include <boost/concept_check.hpp>
 
 /// describes state of local resource
@@ -42,44 +44,41 @@ struct remote_res_t {
 };
 
 struct stat_t {
-    stat_t(const QString& e, const QString& ap, qlonglong m, QFile::Permissions p, quint64 s)
-        : etag(e), absolutepath(ap), mtime(m), perms(p), size(s) {}
-    
-    stat_t() : mtime(0), size(-1), perms(0) {}
-    
-    stat_t(const local_res_t& info) : absolutepath(info.absoluteFilePath())
-        , mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
-        
-    stat_t(const remote_res_t& info) : etag(info.etag), absolutepath(info.path)
-        , mtime(info.mtime), perms(info.perms), size(info.size) {}
-    
-    stat_t(const QVariantMap& data) {
-        mtime = data["mtime"].toLongLong();
-        perms = QFile::Permissions(data["perms"].toInt());
-        size = data["size"].toULongLong();
-    }
-    
-    inline bool empty() const {return mtime == 0 && size == -1 && absolutepath.isEmpty();}
-    
-    inline bool operator==(const stat_t& other) const {
-        return etag == other.etag && absolutepath == other.absolutepath
-            && mtime == other.mtime && perms == other.perms && size == other.size;
-    }
-    
-    inline QVariantMap dump() const {
-        QVariantMap data;
-        data["mtime"] = mtime;
-        data["perms"] = static_cast<int>(perms);
-        data["size"] = size;
-        return data;
-    }
-    
-    QString etag;
-    QString absolutepath;
-    
-    qlonglong mtime;
-    QFile::Permissions perms;
-    quint64 size;
+  stat_t(qlonglong m, QFile::Permissions p, quint64 s)
+    : mtime(m), perms(p), size(s) {}
+  
+  stat_t()
+    : mtime(0), size(-1), perms(0) {}
+  
+  stat_t(const local_res_t& info)
+    : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
+      
+  stat_t(const remote_res_t& info)
+    : mtime(info.mtime), perms(info.perms), size(info.size) {}
+  
+  stat_t(const QVariantMap& data) {
+      mtime = data["mtime"].toLongLong();
+      perms = QFile::Permissions(data["perms"].toInt());
+      size = data["size"].toULongLong();
+  }
+  
+  inline bool empty() const {return mtime == 0 && size == -1;}
+  
+//     inline bool operator==(const stat_t& other) const {
+//         return mtime == other.mtime && perms == other.perms && size == other.size;
+//     }
+  
+  inline QVariantMap dump() const {
+      QVariantMap data;
+      data["mtime"] = mtime;
+      data["perms"] = static_cast<int>(perms);
+      data["size"] = size;
+      return data;
+  }
+  
+  qlonglong mtime;
+  QFile::Permissions perms;
+  quint64 size;
 };
 
 /// describes last synx state of local and remote file
@@ -104,7 +103,11 @@ struct db_entry_t {
 };
 
 /// describes action needed to perform
-struct action_t {
+class action_t {
+    Q_GADGET
+    Q_ENUMS(type_e)
+    
+public:
     typedef int TypeMask;
     
     enum type_e {
@@ -126,25 +129,28 @@ struct action_t {
     } type;
     
     
+    static QString type_text(type_e t) {
+      QMetaEnum e = action_t::staticMetaObject.enumerator(action_t::staticMetaObject.indexOfEnumerator("type_e"));
+      return e.valueToKey(t);
+    }
     
     
     
-    action_t(type_e t, const QString& lf, const QString& rf, const stat_t& l, const stat_t& r)
-        : type(t), local_file(lf), remote_file(rf), local(l), remote(r)
+    action_t(type_e t, const QString& key, const stat_t& l, const stat_t& r)
+        : type(t), key(key), local(l), remote(r)
     {}
 
     action_t() {}
     
-    inline bool empty() const {
-        return local_file.isEmpty() && remote_file.isEmpty();
-    }
+//     inline bool empty() const {
+//         return entry.isEmpty() && remote_file.isEmpty();
+//     }
     
     inline bool operator==(const action_t& other) const {
-        return type == other.type && local_file == other.local_file && remote_file == other.remote_file;
+        return type == other.type && key == other.key;
     }
     
-    QString local_file;
-    QString remote_file;
+    QString key;
     
     stat_t local;
     stat_t remote;
@@ -152,7 +158,7 @@ struct action_t {
 
 inline QDebug operator<<(QDebug dbg, const action_t &a)
 {
-    dbg.nospace() << "#action_t(" << "type:" << a.type << a.local_file << " <=> " << a.remote_file << ")";
+    dbg.nospace() << "#action_t(" << "type:" << a.type << ":" << a.key << ")";
 
     return dbg.space();
 }

@@ -78,6 +78,17 @@ QString storage_t::file_path(const QString& file) const
   return QString(folder(file) + QDir::separator() + this->file(file)).replace(QRegExp("^[/]*"), "").replace("//", "/");
 }
 
+QString storage_t::absolute_file_path(const QString& file) const
+{
+  return QString(p_->root.absolutePath() + QDir::separator() + file_path(file)).replace("//", "/");
+}
+
+QString storage_t::remote_file_path(const QString& file) const
+{
+  return QString("/" + file_path(file)).replace("//", "/");
+}
+
+
 QFileInfoList storage_t::entries(QString folder) const
 {
   QDir dir(prefix() + QDir::separator() + folder);
@@ -86,13 +97,6 @@ QFileInfoList storage_t::entries(QString folder) const
   return dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
 }
 
-QFileInfoList storage_t::folders(QString folder) const
-{
-  QDir dir(prefix() + QDir::separator() + folder);
-  if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
-
-  return dir.entryInfoList(QDir::AllDirs | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
-}
 
 
 
