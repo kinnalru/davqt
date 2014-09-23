@@ -45,8 +45,8 @@ struct upload_handler : base_handler_t {
     remotestat = session.set_permissions(remote_file, action.local.perms);
     remotestat.perms = action.local.perms;
 
-    if ( remotestat.mtime == 0 || remotestat.size == -1) {
-        debug() << "additional HEAD request...";        
+    if (remotestat.mtime == 0 || remotestat.size == -1) {
+        debug() << "additional HEAD request...";
         session.head(remote_file, remotestat.mtime, remotestat.size);
     }
     
@@ -96,43 +96,46 @@ struct download_handler : base_handler_t {
     void do_check(session_t& session, const action_t& action) const {
         Q_ASSERT(action.local.empty());  // local MUST not exists - sanity check
         Q_ASSERT(!action.remote.empty());// remote contains stat do down load not "fixed"
-//         if (QFileInfo(action.local_file).exists())
+//         if (QFileInfo(db->storage().absolute_file_path(action.key)).exists())
 //             throw std::runtime_error("Can't download: file exists");
     }
     
-    void do_request(session_t& session, database::database_t& db, const action_t& action) const {
-//         const QString tmppath = action.local_file + database::database_t::tmpprefix;
-//         
-//         if (QFileInfo(tmppath).exists())
-//             throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
-//         
-//         QFile tmpfile(tmppath);
-//         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-//             throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
-//         
-//         stat_t remotestat =  session.get(action.remote_file, tmpfile.handle());
-//         remotestat.perms = action.remote.perms;
-// 
-//         if (remotestat.perms) {
-//             tmpfile.setPermissions(remotestat.perms);
-//         }
-// 
-//         if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
-//             session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
-//         }
-// 
-//         QFile::remove(action.local_file);
-//         
-//         if (!tmpfile.rename(action.local_file))
-//             throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(action.local_file).arg(tmpfile.errorString()));   
-// 
-//         const stat_t localstat(action.local_file);
-//         
-//         db_entry_t e = db.get_entry(localstat.absolutepath);
-//         e.local = localstat;
-//         e.remote = remotestat;
-//         e.dir = false;        
-//         db.save(e.folder + "/" + e.name, e);
+    void do_request(session_t& session, database_p db, const action_t& action) const {
+      const QString local_file = db->storage().absolute_file_path(action.key);
+      const QString remote_file = db->storage().remote_file_path(action.key);      
+      
+      const QString tmppath = local_file + storage_t::tmpsuffix;
+      
+      if (QFileInfo(tmppath).exists())
+          throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
+      
+      QFile tmpfile(tmppath);
+      if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
+          throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
+      
+      stat_t remotestat =  session.get(remote_file, tmpfile.handle());
+      remotestat.perms = action.remote.perms;
+
+      if (remotestat.perms) {
+          tmpfile.setPermissions(remotestat.perms);
+      }
+
+      if (remotestat.mtime == 0 || remotestat.size == -1) {
+          session.head(remote_file, remotestat.mtime, remotestat.size);
+      }
+
+      QFile::remove(local_file);
+      
+      if (!tmpfile.rename(local_file))
+          throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(local_file).arg(tmpfile.errorString()));   
+
+      const stat_t localstat(local_file);
+      
+      database::entry_t e = db->get(action.key);
+      e.local = localstat;
+      e.remote = remotestat;
+      e.dir = false;        
+      db->put(action.key, e);
     }
 };
 
@@ -409,8 +412,8 @@ action_processor_t::action_processor_t(session_t& session, database_p db, action
     , db_(db)
 {
     handlers_ = {
-      {action_t::upload, upload_handler()},           //FIXME check remote etag NOT exists - yandex bug
-//         {action_t::download, download_handler()},
+      {action_t::upload, upload_handler()},
+      {action_t::download, download_handler()},
 //         {action_t::local_changed, local_change_handler()},    //FIXME check remote etag NOT changed
 //         {action_t::remote_changed, remote_change_handler()},
 //         {action_t::conflict, conflict_handler(comparer, resolver)},

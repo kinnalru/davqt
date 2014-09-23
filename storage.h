@@ -9,6 +9,8 @@
 
 struct storage_t {
   
+  static const QString tmpsuffix;
+  
   storage_t(const QString& root, const QString& path);
   ~storage_t();
   

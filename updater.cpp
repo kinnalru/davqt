@@ -161,6 +161,8 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
       std::map<QString, remote_res_t>(),
       [&] (std::map<QString, remote_res_t>& result, const remote_res_t& resource) {
         result[p_->db->key(resource.path)] = resource;
+        qDebug() << "RR:" << p_->db->key(resource.path);
+        qDebug() << "RR:" << QMap<QString, remote_res_t>(result).keys();
         return result;
       });
     
@@ -181,6 +183,8 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
       });  
     
     QList<action_t> blank_actions;
+    
+    qDebug() << "RR2:" << QMap<QString, remote_res_t>(remote_storage).keys();
     
     {
       const auto remote_files = std::accumulate(remote_storage.begin(), remote_storage.end(),
@@ -215,11 +219,13 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
     }
     
     
+    qDebug() << "RR3:" << QMap<QString, remote_res_t>(remote_storage).keys();
+    
     {
       const auto remote_dirs = std::accumulate(remote_storage.begin(), remote_storage.end(),
         QSet<QString>(),
         [&] (QSet<QString>& result, const std::map<QString, remote_res_t>::value_type& pair) {
-          if (pair.second.dir) {
+          if (!pair.first.isEmpty() && pair.second.dir) {
             result << pair.first;
           }
           return result;
@@ -243,16 +249,23 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
           return result;
         });
       
+      qDebug() << remote_dirs;
+      
       blank_actions << process(db_dirs, local_dirs, remote_dirs, session, lf);
     }
     
+    qDebug() << "RR4:" << QMap<QString, remote_res_t>(remote_storage).keys();
 
     for (auto it = blank_actions.begin(); it != blank_actions.end(); ++it) {
+      qDebug() << action_t::type_text(it->type);
       switch(it->type) {
         case action_t::upload:
           it->local = stat_t(local_storage.at(it->key)); break;
         case action_t::download:
-          it->remote = stat_t(remote_storage.at(it->key)); break;
+          qDebug() << "here:" << it->key;          
+          qDebug() << "here2:" << QMap<QString, remote_res_t>(remote_storage).keys();          
+          it->remote = stat_t(remote_storage.at(it->key)); 
+          break;
         case action_t::compare:
           it->local  = stat_t(local_storage.at(it->key));
           it->remote = stat_t(remote_storage.at(it->key)); break;
@@ -306,15 +319,18 @@ QList<action_t> updater_t::process(QSet<QString> db, QSet<QString> local, QSet<Q
       Q_FOREACH(const auto entry, snap.to_upload) {
         actions << action_t(
           action_t::upload_dir,
-          p_->db->key(folder + "/" + entry),
+          p_->db->key(entry),
           stat_t(), stat_t()
         );
       }
       
       Q_FOREACH(const auto entry, snap.to_download) {
+        qDebug() << "F:" << folder;
+        qDebug() << "G:" << entry;
+        qDebug() << "K:" << p_->db->key(entry);
         actions << action_t(
           action_t::download_dir,
-          p_->db->key(folder + "/" + entry),
+          p_->db->key(entry),
           stat_t(), stat_t()
         );
       }

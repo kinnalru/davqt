@@ -5,6 +5,8 @@
 #include "types.h"
 #include "storage.h"
 
+const QString storage_t::tmpsuffix = ".davqt";
+
 
 struct storage_t::Pimpl {
   QDir root;

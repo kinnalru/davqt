@@ -105,7 +105,7 @@ QList<database::entry_t> database::fs_t::entries(QString folder) const
   qDebug() << "Entries for " << folder;
   
   QDir dir(item(folder).replace(".davdb", ""));
-  if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
+//   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
   
   qDebug() << "Entries for 2 " << dir.absolutePath();
   
@@ -113,7 +113,10 @@ QList<database::entry_t> database::fs_t::entries(QString folder) const
   
   Q_FOREACH(const auto info, dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
     result << get(info.filePath());
+    qDebug() << "Entries for 3 " << info.filePath();
   }
+  
+  
   
   return result;
 }
