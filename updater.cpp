@@ -2,10 +2,13 @@
 #include "tools.h"
 #include "updater.h"
 
+struct stop_exception_t : public std::runtime_error {
+  stop_exception_t() : std::runtime_error("stop") {}
+};
 
 struct updater_t::Pimpl {
     database_p db;
-    connection_t conn;
+    manager_t::connection conn;
     bool stop;
     
     std::map<QString, remote_res_t>      remote_cache;
@@ -13,7 +16,7 @@ struct updater_t::Pimpl {
     std::map<QString, database::entry_t> db_cache;
 };
 
-updater_t::updater_t(database_p db, const connection_t& connection)
+updater_t::updater_t(database_p db, const manager_t::connection& connection)
   : QObject(0)
   , p_(new Pimpl)
 {
@@ -26,63 +29,45 @@ updater_t::~updater_t()
 {
 }
 
-void updater_t::start()
+void updater_t::run()
 {
-  Q_EMIT started();
-
+  qDebug() << "Update thread started";
   try {
     session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-    {
-      if (p_->stop) {
-        Q_EMIT finished();
-        return;
-      }
-      Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
-    }
+  
+    if (p_->stop) throw stop_exception_t();
+    
+    Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
     
     session.set_auth(p_->conn.login, p_->conn.password);
     session.set_ssl();
     session.open();
     
-    qDebug() << Q_FUNC_INFO << "Updating state...";
     p_->remote_cache.clear();
     p_->local_cache.clear();
     p_->db_cache.clear();
     
     const Actions actions = fill(update(session, p_->db->storage().prefix(), p_->db->storage().path()));
-    {
-      qDebug() << Q_FUNC_INFO << actions;
-      Q_EMIT status(actions);
-
-//       QMutexLocker locker(&p_->mx);        
-//       if (!p_->stop) {
-//           qDebug() << p_->thread_name.localData() << Q_FUNC_INFO << "Scanning and comparing...";
-//           Q_EMIT status_updated(actions);
-//       }
-//       qDebug() << p_->thread_name.localData() << "upd12";
-//       Q_ASSERT(p_->in_progress.isEmpty());
-//       Q_ASSERT(p_->todo.isEmpty());
-//       p_->updating = false;
-    }
+    if (p_->stop) throw stop_exception_t();
+  
+    Q_EMIT status(actions);
+  }
+  catch (const stop_exception_t& e) {
+    qDebug() << "Update thread force to stop";
   }
   catch (const std::exception& e) {
-      qDebug() << "Exception in " << Q_FUNC_INFO << ": " << e.what();
-//       QMutexLocker locker(&p_->mx);        
-//       if (!p_->stop)
-//           Q_EMIT status_error(e.what());
-//       
-//       Q_ASSERT(p_->in_progress.isEmpty());
-//       Q_ASSERT(p_->todo.isEmpty());
-//       p_->updating = false;
+    qDebug() << "Update thread exception:" << e.what();
+    Q_EMIT error(e.what());
   }
- 
+
+  qDebug() << "Update thread finished";
   Q_EMIT finished();
- 
 }
 
 void updater_t::stop()
 {
   p_->stop = true;
+  Q_EMIT stopping();
 }
 
 typedef QSet<QString> Files;
@@ -153,8 +138,10 @@ struct snapshot_data {
   Files to_remove_remote;
 };
 
-QList<action_t> updater_t::update(session_t& session, const QString& l, const QString& rf)
+Actions updater_t::update(session_t& session, const QString& l, const QString& rf)
 {
+    if (p_->stop) throw stop_exception_t();
+    
     const QString lf = p_->db->key(l);
     qDebug() << Q_FUNC_INFO << "Local:" << lf << " Remote:" << rf;
     
@@ -189,7 +176,7 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
       });  
     p_->db_cache.insert(db_storage.begin(), db_storage.end());        
     
-    QList<action_t> blank_actions;
+    Actions blank_actions;
     {
         const auto remote_files = std::accumulate(remote_storage.begin(), remote_storage.end(),
             QSet<QString>(),
@@ -264,98 +251,92 @@ QList<action_t> updater_t::update(session_t& session, const QString& l, const QS
     return blank_actions;
 }
 
-QList<action_t> updater_t::process(QSet< QString > db, QSet< QString > local, QSet< QString > remote, session_t& s, QString folder)
+Actions updater_t::process(QSet< QString > db, QSet< QString > local, QSet< QString > remote, session_t& s, QString folder)
 {
-    const snapshot_data snap(db, local, remote);
-    
-    qDebug() << Q_FUNC_INFO << folder;
-    qDebug() << "-- Local:" << local;
-    qDebug() << "-- Remote:" << remote;
-    qDebug() << "-- DB:" << db;
-    
-    QList<action_t> actions;
-    
-    if (folder.isNull()) {
-      Q_FOREACH(const auto entry, snap.to_upload) {
-        actions << action_t(
-          action_t::upload,
-          p_->db->key(folder + "/" + entry),
-          stat_t(), stat_t()
-        );
-      }
-      
-      Q_FOREACH(const auto entry, snap.to_download) {
-        actions << action_t(
-          action_t::download,
-          p_->db->key(folder + "/" + entry),
-          stat_t(), stat_t()
-        );
-      }
-      
-      Q_FOREACH(const auto entry, snap.to_compare) {
-        actions << action_t(
-          action_t::compare,
-          p_->db->key(folder + "/" + entry),
-          stat_t(), stat_t()
-        );
-      }
+  if (p_->stop) throw stop_exception_t();  
+  
+  const snapshot_data snap(db, local, remote);
+  Actions actions;
+  
+  if (folder.isNull()) {
+    Q_FOREACH(const auto entry, snap.to_upload) {
+      actions << action_t(
+        action_t::upload,
+        p_->db->key(folder + "/" + entry),
+        stat_t(), stat_t()
+      );
     }
-    else {
-      Q_FOREACH(const auto entry, snap.to_upload) {
-        actions << action_t(
-          action_t::upload_dir,
-          p_->db->key(entry),
-          stat_t(), stat_t()
-        );
-      }
-      
-      Q_FOREACH(const auto entry, snap.to_download) {
-        actions << action_t(
-          action_t::download_dir,
-          p_->db->key(entry),
-          stat_t(), stat_t()
-        );
-      }
-      
-      Q_FOREACH(const auto entry, snap.to_compare) {
-        if (folder == entry) continue;
-        
-        const QString localdir = p_->db->key(folder + "/" + entry);
-        const QString remotedir = p_->db->key(folder + "/" + entry);
-        actions << update(s, localdir, remotedir);
-      }
+    
+    Q_FOREACH(const auto entry, snap.to_download) {
+      actions << action_t(
+        action_t::download,
+        p_->db->key(folder + "/" + entry),
+        stat_t(), stat_t()
+      );
     }
+    
+    Q_FOREACH(const auto entry, snap.to_compare) {
+      actions << action_t(
+        action_t::compare,
+        p_->db->key(folder + "/" + entry),
+        stat_t(), stat_t()
+      );
+    }
+  }
+  else {
+    Q_FOREACH(const auto entry, snap.to_upload) {
+      actions << action_t(
+        action_t::upload_dir,
+        p_->db->key(entry),
+        stat_t(), stat_t()
+      );
+    }
+    
+    Q_FOREACH(const auto entry, snap.to_download) {
+      actions << action_t(
+        action_t::download_dir,
+        p_->db->key(entry),
+        stat_t(), stat_t()
+      );
+    }
+    
+    Q_FOREACH(const auto entry, snap.to_compare) {
+      if (folder == entry) continue;
+      
+      const QString localdir = p_->db->key(folder + "/" + entry);
+      const QString remotedir = p_->db->key(folder + "/" + entry);
+      actions << update(s, localdir, remotedir);
+    }
+  }
 
-    Q_FOREACH(const auto entry, snap.to_forgot) {
-      actions << action_t(
-        action_t::forgot,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
-      );
-    }
-    
-    Q_FOREACH(const auto entry, snap.to_remove_local) {
-      actions << action_t(
-        action_t::remove_local,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
-      );
-    }
-    
-    Q_FOREACH(const auto entry, snap.to_remove_remote) {
-      actions << action_t(
-        action_t::remove_remote,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
-      );
-    }
-    
-    qDebug() << "Processed:" << actions;
-    
-    return actions;
+  Q_FOREACH(const auto entry, snap.to_forgot) {
+    actions << action_t(
+      action_t::forgot,
+      p_->db->key(folder + "/" + entry),
+      stat_t(), stat_t()
+    );
+  }
+  
+  Q_FOREACH(const auto entry, snap.to_remove_local) {
+    actions << action_t(
+      action_t::remove_local,
+      p_->db->key(folder + "/" + entry),
+      stat_t(), stat_t()
+    );
+  }
+  
+  Q_FOREACH(const auto entry, snap.to_remove_remote) {
+    actions << action_t(
+      action_t::remove_remote,
+      p_->db->key(folder + "/" + entry),
+      stat_t(), stat_t()
+    );
+  }
+  
+  return actions;
 }
 
-QList<action_t> updater_t::fill(QList<action_t> actions) const
+Actions updater_t::fill(Actions actions) const
 {
   for (auto it = actions.begin(); it != actions.end(); ++it) {
     qDebug() << action_t::type_text(it->type);

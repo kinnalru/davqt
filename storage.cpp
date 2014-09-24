@@ -9,23 +9,22 @@ const QString storage_t::tmpsuffix = ".davqt";
 
 
 struct storage_t::Pimpl {
-  QDir root;
-  QDir path;
+  Pimpl(const QString& r, const QString& p) : root(r), path(p) {}
+  
+  const QDir root;
+  const QDir path;
 };
 
 
 storage_t::storage_t(const QString& root, const QString& path)
-  : p_(new Pimpl)
+  : p_(new Pimpl(root, root + QDir::separator() + path))
 {
   {
-    p_->root = QDir(root);
     if (!p_->root.exists()) {
       if (!p_->root.mkpath(".")) {
         throw qt_exception_t(QString("Can't use root dir [%1]").arg(p_->root.absolutePath()));
       }
     }
-    
-    p_->path = QDir(root + QDir::separator() + path);
     
     if (!p_->path.exists()) {
       if (!p_->path.mkpath(".")) {
@@ -48,7 +47,6 @@ QString storage_t::root() const
 
 QString storage_t::path() const
 {
-  qDebug() << "p:" << p_->path.absolutePath();
   return p_->root.relativeFilePath(p_->path.absolutePath());
 }
 

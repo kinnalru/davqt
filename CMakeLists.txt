@@ -37,6 +37,7 @@ set(HEADERS
     database/fs/fs.h
     handlers.h
     storage.h
+
 )
 
 set(MOC
@@ -49,6 +50,7 @@ set(MOC
     updater.h
     syncer.h
     types.h
+    manager.h
 )
 
 set(SOURCES 
@@ -64,6 +66,7 @@ set(SOURCES
     sync.cpp
     updater.cpp
     syncer.cpp
+    manager.cpp
 )
 
 set(IFACES

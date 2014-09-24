@@ -1,6 +1,7 @@
 
 #include <QDebug>
 #include <QDirIterator>
+#include <QMutex>
 
 #include "tools.h"
 #include "fs.h"
@@ -12,14 +13,18 @@ namespace {
 }
 
 struct database::fs_t::Pimpl {
-  QDir db;
+  
+  Pimpl(const QString& db) : db(db), mx_(QMutex::Recursive), mx(&mx_) {}
+  
+  const QDir db;
+  QMutex mx_;
+  QMutex* mx;
 };
 
 database::fs_t::fs_t(const storage_t& s, const QString& dbpath)
     : database_t(s)
-    , p_(new Pimpl)
+    , p_(new Pimpl(dbpath))
 {
-  p_->db = QDir(dbpath);
   if (!p_->db.exists()) {
     if (!p_->db.mkpath(".")) {
       throw qt_exception_t(QString("Can't use db path [%1]").arg(p_->db.absolutePath()));
@@ -39,11 +44,13 @@ QString database::fs_t::key(QString path) const
 }
 
 
-void database::fs_t::put(const QString& absolutefilepath, const database::entry_t& entry)
+void database::fs_t::put(const QString& filepath, const database::entry_t& entry)
 {
-  debug() << "save entry:" << absolutefilepath;
+  debug() << "save entry:" << filepath << "...";
+  QMutexLocker lock(p_->mx);
   
-  QSettings file(item(absolutefilepath), QSettings::IniFormat);
+  
+  QSettings file(item(filepath), QSettings::IniFormat);
   file.clear();
   
   debug() << "name" << file.fileName();
@@ -82,7 +89,8 @@ QVariantMap to_map(QSettings& s) {
 
 database::entry_t database::fs_t::get(const QString& filepath) const
 {
-  debug() << "load entry:" << item(filepath);
+  debug() << "load entry:" << item(filepath) << "...";
+  QMutexLocker lock(p_->mx);
   
   QSettings file(item(filepath), QSettings::IniFormat);
   
@@ -97,7 +105,9 @@ database::entry_t database::fs_t::get(const QString& filepath) const
 
 void database::fs_t::remove(const QString& filepath)
 {
-  debug() << "removing entry:" << filepath;
+  debug() << "removing entry:" << filepath << "..."  ;
+  QMutexLocker lock(p_->mx);
+  
   const auto entry = get(item(filepath));
   if (entry.dir) {
     qDebug() << "REMOVE: " << item(filepath).replace(".davdb", "");
@@ -107,9 +117,9 @@ void database::fs_t::remove(const QString& filepath)
 
 QList<database::entry_t> database::fs_t::entries(QString folder) const
 {
+  QMutexLocker lock(p_->mx);  
   QDir dir(item(folder).replace(".davdb", ""));
   QList<entry_t> result;
-  
   
   Q_FOREACH(const auto info, dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
     if (info.isDir()) continue;

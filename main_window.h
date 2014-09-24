@@ -46,17 +46,16 @@ public Q_SLOTS:
     void sync_finished();
     
     void action_started(const action_t& action);
+    void action_progress(const action_t& action, qint64 progress, qint64 total);        
     void action_success(const action_t& action);
     void action_error(const action_t& action, const QString& message);
     
-    void action_progress(const action_t& action, qint64 progress, qint64 total);        
-
     void tray_activated(QSystemTrayIcon::ActivationReason);
     void message_activated();
 private:
     void action_finished(const action_t& action);
     Q_SLOT void force_sync();
-    void start_sync();
+    Q_SLOT void start_sync();
     
     enum gui_state_e {
         disabled,

@@ -351,12 +351,6 @@ struct download_dir_handler : base_handler_t {
     void do_request(session_t& session, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO;
         
-        static int g = 0;
-        
-        g++;
-        
-        if (g == 3) exit(1);
-        
         const QString local_file = db->storage().absolute_file_path(action.key);
         const QString remote_file = db->storage().remote_file_path(action.key);
         
@@ -429,7 +423,7 @@ void action_processor_t::process(const action_t& action)
         debug() << "completed";
     }
     else {
-        qCritical() << "unhandled action type!:" << action_t::type_text(action.type);
+        qCritical() << "unhandled action type!:" << action;
         Q_ASSERT(!"unhandled action type!");
     }
 }

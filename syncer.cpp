@@ -3,21 +3,32 @@
 #include "tools.h"
 #include "syncer.h"
 
-struct syncer_t::Pimpl {
-  database_p db;
-  connection_t conn;
-  QList<action_t> actions;
-  bool stop;
+struct stop_exception_t : public std::runtime_error {
+  stop_exception_t() : std::runtime_error("stop") {}
 };
 
-syncer_t::syncer_t(database_p db, const connection_t& connection, const QList<action_t>& actions)
+struct syncer_t::Pimpl {
+  database_p db;
+  manager_t::connection conn;
+  bool stop;
+  
+  QMutex* mx;
+  Actions* actions;
+};
+
+syncer_t::syncer_t(database_p db, const manager_t::connection& connection, QMutex* mx, Actions* actions)
   : QObject(0)
   , p_(new Pimpl)
 {
   p_->db = db;
   p_->conn = connection;
-  p_->actions = actions;
   p_->stop = false;
+  
+  Q_ASSERT(mx);
+  Q_ASSERT(actions);
+  
+  p_->mx = mx;
+  p_->actions = actions;
 }
 
 syncer_t::~syncer_t()
@@ -25,53 +36,81 @@ syncer_t::~syncer_t()
 }
 
 
-void syncer_t::start()
+void syncer_t::run()
 {
-  Q_EMIT started();
-  
-  Q_FOREACH(const auto& action, p_->actions ) {
+  qDebug() << "Sync thread started";  
+  try {
+    
+    const auto next_action = [this] () {
+      action_t current;
+      QMutexLocker locker(p_->mx);
+      
+      if (!p_->actions->isEmpty()) {
+          current = p_->actions->takeFirst();
+      }
+      return current;
+    };
     
     session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
-            
-    if (p_->stop) {
-      Q_EMIT finished();
-      return;
-    }
+              
+    if (p_->stop) throw stop_exception_t();
+    
     Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
-
+    
     session.set_auth(p_->conn.login, p_->conn.password);
     session.set_ssl();
     session.open();
+    
+    if (p_->stop) throw stop_exception_t();
+    
+    progress_adapter_t adapter;
 
+    Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+    Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+    Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
     
-//     action_processor_t processor(session, p_->db,
-//         [] (action_processor_t::resolve_ctx& ctx) {
-//             return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
-//         },
-//         [] (action_processor_t::resolve_ctx& ctx) {
-//             ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
-//             return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
-//         });
-    
-    
-    qDebug() << "Preparing action processor...";
     action_processor_t processor(session, p_->db);
-
-    try {
+    //     action_processor_t processor(session, p_->db,
+    //         [] (action_processor_t::resolve_ctx& ctx) {
+    //             return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+    //         },
+    //         [] (action_processor_t::resolve_ctx& ctx) {
+    //             ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
+    //             return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+    //         });
     
-      qDebug() << "Process action";
-      processor.process(action);
+    Q_FOREVER {
+      action_t current = next_action();
+      if (current.empty()) break;
+      
+      adapter.set_action(current);
+      
+      try {
+        Q_EMIT action_started(current);      
+        processor.process(current);
+        Q_EMIT action_success(current);
+      }
+      catch(const std::exception& e) {
+          Q_EMIT action_error(current, e.what());
+      }
     }
-    catch(std::exception& e) {
-      qDebug() << "Exception:" << e.what();
-    }
+
   }
- 
+  catch (const stop_exception_t& e) {
+    qDebug() << "Sync thread force to stop";
+  }
+  catch (const std::exception& e) {
+    qDebug() << "Sync thread exception:" << e.what();
+    Q_EMIT error(e.what());
+  }
+
+  qDebug() << "Sync thread finished";
   Q_EMIT finished();
 }
 
 void syncer_t::stop()
 {
-
+  p_->stop = true;
+  Q_EMIT stopping();
 }
 

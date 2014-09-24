@@ -71,10 +71,6 @@ struct stat_t {
     
     inline bool empty() const {return mtime == 0 || size == -1;}
     
-    //     inline bool operator==(const stat_t& other) const {
-    //         return mtime == other.mtime && perms == other.perms && size == other.size;
-    //     }
-    
     inline QVariantMap dump() const {
         QVariantMap data;
         data["mtime"] = mtime;
@@ -153,9 +149,7 @@ public:
 
     action_t() {}
     
-//     inline bool empty() const {
-//         return entry.isEmpty() && remote_file.isEmpty();
-//     }
+    inline bool empty() const {return key.isEmpty();}
     
     inline bool operator==(const action_t& other) const {
         return type == other.type && key == other.key;

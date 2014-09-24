@@ -3,37 +3,35 @@
 #include <memory>
 
 #include <QObject>
+#include <QRunnable>
 
-#include "database/database.h"
+#include "manager.h"
 #include "session.h"
-#include "types.h"
 
-class updater_t : public QObject {
+class updater_t : public QObject, public QRunnable {
   Q_OBJECT
 
 public:
   
-  updater_t(database_p db, const connection_t& connection);
+  updater_t(database_p db, const manager_t::connection& connection);
   virtual ~updater_t();
     
-   
+  virtual void run(); 
+  
 public Q_SLOTS:
-  void start();
   void stop();
     
 Q_SIGNALS:
-  
-  void started();  
-  void finished();
-  
   void status(const Actions& actions);
   
+  void error(const QString& actions);
+  void finished();
   void stopping();
     
 private:
-  QList<action_t> update(session_t& session, const QString& lf, const QString& rf);
-  QList<action_t> process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder = QString());
-  QList<action_t> fill(QList<action_t> actions) const;
+  Actions update(session_t& session, const QString& l, const QString& rf);
+  Actions process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder = QString());
+  Actions fill(Actions actions) const;
   
   action_t::type_e compare(const action_t& action) const;
   

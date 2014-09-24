@@ -29,23 +29,23 @@
 
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
-#include "updater.h"
 
-#include "tools.h"
 
 #include "settings/main_settings.h"
 #include "settings/settings.h"
 
+#include "manager.h"
+
+#include "tools.h"
 #include "ui_main_window.h"
 #include "main_window.h"
-#include "syncer.h"
 
 struct main_window_t::Pimpl {
     Ui_main ui;
     
     database_p db;
     
-    thread_manager_t* manager;
+    std::unique_ptr<manager_t> manager;
     Actions actions;
     QSystemTrayIcon* tray;
     
@@ -60,6 +60,11 @@ main_window_t::main_window_t(database_p db)
     : QWidget(NULL)
     , p_(new Pimpl())
 {
+  
+    static int r1 = qRegisterMetaType<action_t>("action_t");
+    static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
+    static int r3 = qRegisterMetaType<Actions>("Actions");   
+  
     p_->db = db;
     p_->ui.setupUi(this);
 
@@ -92,27 +97,27 @@ main_window_t::main_window_t(database_p db)
         d.add_item(new main_settings_t());
         d.exec();
         
-        if (p_->manager->is_busy()) {
-            QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
-                QMessageBox::Yes | QMessageBox::No
-            );
-            
-            Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &mb, SLOT(reject())));
-            QMessageBox::StandardButton result = QMessageBox::StandardButton(mb.exec());  
-            if (mb.clickedButton()) {
-                if (result == QMessageBox::Yes) {
-                    QProgressDialog waiter(tr("Waiting for sync finished..."), tr("Break"), 0, 0);
-                    Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &waiter, SLOT(reset())));
-                    waiter.exec();
-                    if (waiter.wasCanceled()) {
-                        p_->manager->stop();
-                    }
-                } else {
-                    p_->manager->stop();
-                }         
-            }
-        }
-        restart();
+//         if (p_->manager->is_busy()) {
+//             QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
+//                 QMessageBox::Yes | QMessageBox::No
+//             );
+//             
+//             Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &mb, SLOT(reject())));
+//             QMessageBox::StandardButton result = QMessageBox::StandardButton(mb.exec());  
+//             if (mb.clickedButton()) {
+//                 if (result == QMessageBox::Yes) {
+//                     QProgressDialog waiter(tr("Waiting for sync finished..."), tr("Break"), 0, 0);
+//                     Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &waiter, SLOT(reset())));
+//                     waiter.exec();
+//                     if (waiter.wasCanceled()) {
+//                         p_->manager->stop();
+//                     }
+//                 } else {
+//                     p_->manager->stop();
+//                 }         
+//             }
+//         }
+//         restart();
     });
     
     p_->enabled_a->setCheckable(true);
@@ -144,11 +149,11 @@ main_window_t::~main_window_t() {
 
 void main_window_t::restart()
 {
-    if (p_->manager) {
-        p_->manager->disconnect(this);
-        delete p_->manager;
-        p_->manager = NULL;
-    }
+//     if (p_->manager) {
+//         p_->manager->disconnect(this);
+//         delete p_->manager;
+//         p_->manager = NULL;
+//     }
 
     url_t checker;
     
@@ -165,7 +170,7 @@ void main_window_t::restart()
         settings().password()
     };
     
-    p_->manager = new thread_manager_t(0, p_->db, conn, settings().localfolder(), url.path() + settings().remotefolder());
+/*    p_->manager = new thread_manager_t(0, p_->db, conn, settings().localfolder(), url.path() + settings().remotefolder());
 
     Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));
     Q_VERIFY(connect(p_->manager, SIGNAL(status_error(QString)), this, SLOT(status_error(QString))));             
@@ -180,7 +185,7 @@ void main_window_t::restart()
     
     Q_VERIFY(::connect(p_->manager, SIGNAL(sync_finished()), [] {
         settings().set_last_sync(QDateTime::currentDateTime());
-    }));   
+    }));  */ 
 }
 
 
@@ -246,15 +251,12 @@ void main_window_t::sync()
 {
     const int interval = settings().interval();
     const QDateTime last = settings().last_sync();
+
+    qDebug() << last;
     
-    int to_sync;
-    
-    if (last.isValid()) {
-        to_sync = std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0);
-    } 
-    else {
-        to_sync = 0;
-    }
+    int to_sync = (last.isValid())
+      ? std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0)
+      : 0;
     
     p_->ui.to_sync->setText(tr("(to sync: %1s)").arg(to_sync));
     p_->ui.last_sync->setText(tr("Last sync: %1").arg(last.toString()));
@@ -271,11 +273,11 @@ void main_window_t::sync()
 
 struct MyThread: public QThread {
   explicit MyThread() {
-    qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
+//     qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
   }
   
     virtual ~MyThread() {
-      qDebug() << "<<<<< THREAD destroyed";
+//       qDebug() << "<<<<< THREAD destroyed";
     }
   
 
@@ -290,12 +292,14 @@ void initialize_thread(QObject* object) {
 }
 
 
+#include "manager.h"
+
 
 void main_window_t::force_sync()
 {
   const QUrl url(settings().host());
   
-  connection_t conn = {
+  manager_t::connection conn = {
       url.scheme(),
       url.host(),
       url.port(),
@@ -303,25 +307,29 @@ void main_window_t::force_sync()
       settings().password()
   };
   
-  updater_t* u = new updater_t(p_->db, conn);
-  Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
-  initialize_thread(u);
   
-  Q_VERIFY(connect(u, SIGNAL(status(Actions)), this, SLOT(status_updated(Actions))));
-  Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
-      start_sync();
+  if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
+  
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(update_result(Actions)), this, SLOT(status_updated(Actions))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
+  
+  Q_VERIFY(::connectOnce(p_->manager.get(), SIGNAL(update_result(Actions)), [this] {
+    start_sync();
   }));
-  QTimer::singleShot(0, u, SLOT(start()));
   
-//     qDebug() << Q_FUNC_INFO << "Busy:" << p_->manager->is_busy(); 
-//     
-//     if (!p_->manager->is_busy()) {
-//         qDebug() << "main sync3";
-//         Q_VERIFY(::connectOnce(p_->manager, SIGNAL(status_updated(Actions)), [this] {
-//             start_sync();
-//         }));
-//         p_->manager->update_status();
-//     }
+  p_->manager->start_update();
+  
+//   updater_t* u = new updater_t(p_->db, conn);
+//   Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
+//   initialize_thread(u);
+//   
+//   Q_VERIFY(connect(u, SIGNAL(status(Actions)), this, SLOT(status_updated(Actions))));
+//   Q_VERIFY(connect(u, SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
+//   
+//   Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
+//       start_sync();
+//   }));
+//   QTimer::singleShot(0, u, SLOT(start()));
 }
 
 
@@ -329,7 +337,7 @@ void main_window_t::start_sync()
 {
   const QUrl url(settings().host());
   
-  connection_t conn = {
+  manager_t::connection conn = {
       url.scheme(),
       url.host(),
       url.port(),
@@ -337,11 +345,34 @@ void main_window_t::start_sync()
       settings().password()
   };
   
-  syncer_t* u = new syncer_t(p_->db, conn, p_->actions);
-  Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
-  initialize_thread(u);
+  if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
   
-  QTimer::singleShot(0, u, SLOT(start()));
+  if (p_->manager->status() != manager_t::free) {
+    QTimer::singleShot(100, this, SLOT(start_sync()));
+    return;
+  }
+  
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+  
+  p_->manager->start_sync();
+  
+//   syncer_t* u = new syncer_t(p_->db, conn, p_->actions);
+//   Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
+//   initialize_thread(u);
+//   
+//   Q_VERIFY(connect(u, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+//   Q_VERIFY(connect(u, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+//   Q_VERIFY(connect(u, SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
+//   Q_VERIFY(connect(u, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+// 
+//   Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
+//       settings().set_last_sync(QDateTime::currentDateTime());
+//   }));
+//   
+//   QTimer::singleShot(0, u, SLOT(start()));
 }
 
 void main_window_t::status_updated(const Actions& actions)
@@ -547,7 +578,7 @@ void main_window_t::set_state(main_window_t::gui_state_e state)
             p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
             p_->tray->setIcon(QIcon("icons:state-offline.png"));
         }
-        p_->manager->stop();        
+//         p_->manager->stop();        
         break;
     }
     case syncing: {

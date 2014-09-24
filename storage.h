@@ -7,6 +7,7 @@
 #include <QStringList>
 
 
+///class is thread safe
 struct storage_t {
   
   static const QString tmpsuffix;

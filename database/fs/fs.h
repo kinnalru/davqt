@@ -18,8 +18,6 @@ struct fs_t: public database_t {
   virtual void remove(const QString& filepath);
   
   virtual QList<entry_t> entries(QString folder = QString()) const;
-//   virtual QStringList folders(QString folder = QString()) const;
-//   virtual QStringList files(QString folder = QString()) const;
 
 private:
   QString item(QString path) const;

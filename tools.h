@@ -125,3 +125,28 @@ private:
 };
 
 
+template <typename T>
+class scoped_value
+{
+public:
+  scoped_value(T& value, T in)
+    : value_(value), out_(value)
+  {
+    value_ = in;
+  }
+
+  scoped_value(T& value, T in, T out)
+  : value_(value), out_(out)
+  {
+    value_ = in;
+  }
+
+  ~scoped_value()
+  {
+    value_ = out_;
+  }
+private:
+  T& value_;
+  T out_;
+};
+

@@ -3,29 +3,32 @@
 #include <memory>
 
 #include <QObject>
+#include <QRunnable>
 
-#include "database/database.h"
+#include "manager.h"
 #include "session.h"
-#include "types.h"
 
-class syncer_t : public QObject {
+class syncer_t : public QObject, public QRunnable {
   Q_OBJECT
 
 public:
   
-  syncer_t(database_p db, const connection_t& connection, const QList<action_t>& actions);
+  syncer_t(database_p db, const manager_t::connection& connection, QMutex* mx, Actions* actions);
   virtual ~syncer_t();
     
+  virtual void run(); 
    
 public Q_SLOTS:
-  void start();
   void stop();
     
 Q_SIGNALS:
-  
-  void started();  
+  void action_started(const action_t& action);
+  void progress(const action_t& action, qint64 progress, qint64 total);  
+  void action_success(const action_t& action);
+  void action_error(const action_t& action, const QString& error);  
+
+  void error(const QString&);
   void finished();
-  
   void stopping();
     
 private:

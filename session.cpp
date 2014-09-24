@@ -41,6 +41,7 @@
 
 #include <QDebug>
 
+#include "tools.h"
 #include "session.h"
 
 #define EUNKNOWN 99999
@@ -99,6 +100,7 @@ struct session_t::Pimpl {
     auth_data_t auth;
     volatile bool cancell;
     Notify notify;    
+    bool notify_enabled;
     std::shared_ptr<ne_session> session;
     QDateTime lastprogress;
 };
@@ -363,11 +365,14 @@ session_t::session_t(QObject* parent, const QString& schema, const QString& host
     if (!p_->session.get()) throw std::runtime_error("Can't create session");
     
     
+    p_->notify_enabled = false;
     p_->notify = [this] (ne_session_status status, const ne_session_status_info *info) {
         if (p_->cancell) {
             ne_set_notifier(p_->session.get(), NULL, NULL);
             ne_close_connection(p_->session.get());
         }
+        
+        if (!p_->notify_enabled) return;
         
         switch (status) {
             case ne_status_lookup:
@@ -545,6 +550,7 @@ stat_t session_t::get(const QString& unescaped_path, int fd)
         p_->session.get()
     };  
     
+    scoped_value<bool> v(p_->notify_enabled, true, false);
     hook_helper_t hooker(p_->session.get(), &ctx);
     if (ne_get(p_->session.get(), path.get(), fd) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
@@ -562,6 +568,7 @@ stat_t session_t::put(const QString& unescaped_path, int fd)
         p_->session.get()
     };  
     
+    scoped_value<bool> v(p_->notify_enabled, true, false);
     hook_helper_t hooker(p_->session.get(), &ctx);
     if (ne_put(p_->session.get(), path.get(), fd) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
