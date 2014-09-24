@@ -13,7 +13,7 @@ class syncer_t : public QObject, public QRunnable {
 
 public:
   
-  syncer_t(database_p db, const manager_t::connection& connection, QMutex* mx, Actions* actions);
+  syncer_t(database_p db, const manager_t::connection& connection, manager_t& manager/*, QMutex* mx, Actions* actions*/);
   virtual ~syncer_t();
     
   virtual void run(); 

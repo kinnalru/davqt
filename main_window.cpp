@@ -310,10 +310,10 @@ void main_window_t::force_sync()
   
   if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
   
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(update_result(Actions)), this, SLOT(status_updated(Actions))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(update_finished(Actions)), this, SLOT(status_updated(Actions))));
   Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
   
-  Q_VERIFY(::connectOnce(p_->manager.get(), SIGNAL(update_result(Actions)), [this] {
+  Q_VERIFY(::connectOnce(p_->manager.get(), SIGNAL(update_finished(Actions)), [this] {
     start_sync();
   }));
   
@@ -347,10 +347,10 @@ void main_window_t::start_sync()
   
   if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
   
-  if (p_->manager->status() != manager_t::free) {
-    QTimer::singleShot(100, this, SLOT(start_sync()));
-    return;
-  }
+//   if (p_->manager->status() != manager_t::free) {
+//     QTimer::singleShot(100, this, SLOT(start_sync()));
+//     return;
+//   }
   
   Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
   Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));

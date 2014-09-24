@@ -30,7 +30,6 @@ public:
   };
   
   status_e status() const;
-  const Actions& actions() const;
   
 public Q_SLOTS:
   void start_update(); /// calculate tasks for sync
@@ -41,8 +40,8 @@ Q_SIGNALS:
 
   /// manager status change
   void status(status_e);
-  void update_result(const Actions& actions);
-  void sync_complete();
+  void update_finished(const Actions& actions);
+  void sync_finished();
   
   void error(const QString);
   
@@ -54,9 +53,12 @@ Q_SIGNALS:
   void need_stop();
   
 private Q_SLOTS:
-  void update_complete(const Actions& actions);
-  void update_finished();
-  void sync_finished();
+  void update_result(const Actions& actions);
+  void update_complete();
+  void sync_complete();
+
+private:
+  Q_INVOKABLE action_t next_sync_action();
   
 private:
   struct Pimpl;
