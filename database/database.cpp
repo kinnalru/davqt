@@ -7,13 +7,19 @@
 
 QString database::database_t::key(QString path) const
 {
-  return storage().file_path(path);
+    return storage().file_path(path);
 }
 
 database::entry_t database::database_t::create(QString path, const stat_t& l, const stat_t& r, bool dir) const
 {
-  return entry_t(key(path), l, r, dir);
+    return entry_t(key(path), l, r, dir);
 }
+
+database::entry_t database::database_t::create(QString path, const QVariantMap& data) const
+{
+    return entry_t(key(path), data);
+}
+
 
 
 

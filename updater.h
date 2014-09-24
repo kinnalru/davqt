@@ -33,6 +33,9 @@ Q_SIGNALS:
 private:
   QList<action_t> update(session_t& session, const QString& lf, const QString& rf);
   QList<action_t> process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder = QString());
+  QList<action_t> fill(QList<action_t> actions) const;
+  
+  action_t::type_e compare(const action_t& action) const;
   
     
 private:

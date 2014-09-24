@@ -47,17 +47,17 @@ public:
     
     QList<remote_res_t> get_resources(QString unescaped_path);
     
-    stat_t get(const QString& unescaped_path, int fd);
     
-    /*! if etag isNull - there is NO file on server
-     *  if etag = "" - there is no etag used
-     *  if etag not isEmpty - use it to override file on serveer
-     */
+    /// download data to descriptor \p fd
+    stat_t get(const QString& unescaped_path, int fd);
+
+    /// upload data from descriptor \p fd
     stat_t put(const QString& unescaped_path, int fd);
 
-    void head(const QString& unescaped_path, qlonglong& mtime, quint64& length);
+    /// get resource attributes
+    stat_t head(const QString& unescaped_path);
 
-    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions prems);
+    stat_t set_permissions(const QString& unescaped_path, QFile::Permissions perms);
     
     void remove(const QString& unescaped_path);
 
@@ -70,7 +70,6 @@ Q_SIGNALS:
     void put_progress(qint64 progress, qint64 total);
 
 private:
-    void etag_check_workaround(const QString& unescaped_path, const QString& etag);
     
 private:
     struct Pimpl;

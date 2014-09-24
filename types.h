@@ -44,41 +44,48 @@ struct remote_res_t {
 };
 
 struct stat_t {
-  stat_t(qlonglong m, QFile::Permissions p, quint64 s)
-    : mtime(m), perms(p), size(s) {}
-  
-  stat_t()
-    : mtime(0), size(-1), perms(0) {}
-  
-  stat_t(const local_res_t& info)
-    : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
-      
-  stat_t(const remote_res_t& info)
-    : mtime(info.mtime), perms(info.perms), size(info.size) {}
-  
-  stat_t(const QVariantMap& data) {
-      mtime = data["mtime"].toLongLong();
-      perms = QFile::Permissions(data["perms"].toInt());
-      size = data["size"].toULongLong();
-  }
-  
-  inline bool empty() const {return mtime == 0 && size == -1;}
-  
-//     inline bool operator==(const stat_t& other) const {
-//         return mtime == other.mtime && perms == other.perms && size == other.size;
-//     }
-  
-  inline QVariantMap dump() const {
-      QVariantMap data;
-      data["mtime"] = mtime;
-      data["perms"] = static_cast<int>(perms);
-      data["size"] = size;
-      return data;
-  }
-  
-  qlonglong mtime;
-  QFile::Permissions perms;
-  quint64 size;
+    stat_t(qlonglong m, QFile::Permissions p, quint64 s)
+        : mtime(m), perms(p), size(s) {}
+    
+    stat_t()
+        : mtime(0), size(-1), perms(0) {}
+    
+    stat_t(const local_res_t& info)
+        : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
+        
+    stat_t(const remote_res_t& info)
+        : mtime(info.mtime), perms(info.perms), size(info.size) {}
+    
+    stat_t(const QVariantMap& data) {
+        mtime = data["mtime"].toLongLong();
+        perms = QFile::Permissions(data["perms"].toInt());
+        size = data["size"].toULongLong();
+    }
+    
+    inline stat_t& merge(const stat_t& other) {
+        if (other.mtime != 0) mtime = other.mtime;
+        if (other.perms != 0) perms = other.perms;
+        if (other.size != -1) size = other.size;
+        return *this;
+    }
+    
+    inline bool empty() const {return mtime == 0 || size == -1;}
+    
+    //     inline bool operator==(const stat_t& other) const {
+    //         return mtime == other.mtime && perms == other.perms && size == other.size;
+    //     }
+    
+    inline QVariantMap dump() const {
+        QVariantMap data;
+        data["mtime"] = mtime;
+        data["perms"] = static_cast<int>(perms);
+        data["size"] = size;
+        return data;
+    }
+    
+    qlonglong mtime;
+    QFile::Permissions perms;
+    quint64 size;
 };
 
 /// describes last synx state of local and remote file
@@ -134,6 +141,10 @@ public:
       return e.valueToKey(t);
     }
     
+    QString type_text() const {
+      return action_t::type_text(type);
+    }
+    
     
     
     action_t(type_e t, const QString& key, const stat_t& l, const stat_t& r)
@@ -158,7 +169,28 @@ public:
 
 inline QDebug operator<<(QDebug dbg, const action_t &a)
 {
-    dbg.nospace() << "#action_t(" << "type:" << a.type << ":" << a.key << ")";
+    dbg.nospace() << "#action_t(" << "type:" << a.type_text() << ":" << a.key << ")";
+
+    return dbg.space();
+}
+
+inline QDebug operator<<(QDebug dbg, const stat_t &s)
+{
+    dbg.nospace() << "#stat_t(" << "mtime:" << QDateTime::fromTime_t(s.mtime) << " " << s.perms << " Size:" << s.size << ")";
+
+    return dbg.space();
+}
+
+inline QDebug operator<<(QDebug dbg, const QFile::Permissions &perms)
+{
+    dbg.nospace() << "#Permissions(";
+        QMetaEnum e = QFile::staticMetaObject.enumerator(QFile::staticMetaObject.indexOfEnumerator("Permission"));
+        for (int i = 0; i< e.keyCount(); ++i) {
+            if (perms & e.value(i)) {
+                dbg.nospace() << e.key(i);
+            }
+        }
+    dbg.nospace() << ")";
 
     return dbg.space();
 }

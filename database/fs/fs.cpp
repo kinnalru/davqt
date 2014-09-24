@@ -16,10 +16,9 @@ struct database::fs_t::Pimpl {
 };
 
 database::fs_t::fs_t(const storage_t& s, const QString& dbpath)
-  : database_t(s)
-  , p_(new Pimpl)
+    : database_t(s)
+    , p_(new Pimpl)
 {
-  
   p_->db = QDir(dbpath);
   if (!p_->db.exists()) {
     if (!p_->db.mkpath(".")) {
@@ -33,6 +32,12 @@ database::fs_t::fs_t(const storage_t& s, const QString& dbpath)
 database::fs_t::~fs_t()
 {
 }
+
+QString database::fs_t::key(QString path) const
+{
+  return database::database_t::key(path.replace(p_->db.absolutePath(), ""));
+}
+
 
 void database::fs_t::put(const QString& absolutefilepath, const database::entry_t& entry)
 {
@@ -61,9 +66,23 @@ void database::fs_t::put(const QString& absolutefilepath, const database::entry_
   }
 }
 
+QVariantMap to_map(QSettings& s) {
+  QVariantMap result;
+  Q_FOREACH(auto key, s.childKeys()) {
+    result[key] = s.value(key);
+  }
+  
+  Q_FOREACH(auto group, s.childGroups()) {
+    s.beginGroup(group);
+    result[group] = to_map(s);
+    s.endGroup();
+  }
+  return result;
+}
+
 database::entry_t database::fs_t::get(const QString& filepath) const
 {
-  debug() << "load entry:" << filepath;
+  debug() << "load entry:" << item(filepath);
   
   QSettings file(item(filepath), QSettings::IniFormat);
   
@@ -72,71 +91,33 @@ database::entry_t database::fs_t::get(const QString& filepath) const
     throw qt_exception_t(QString("Can't get entry from db [%1]").arg(file.fileName()));
   }
   
-  
-  const stat_t local(
-      file.value("local/mtime").value<qlonglong>()
-    , QFile::Permissions(file.value("local/perms").toInt())
-    , file.value("local/size").value<qulonglong>()
-  );
-  
-  const stat_t remote(
-      file.value("remote/mtime").value<qlonglong>()
-    , QFile::Permissions(file.value("remote/perms").toInt())
-    , file.value("remote/size").value<qulonglong>()
-  );
-
-  return create(
-      key(filepath),
-      local,
-      remote,
-      file.value("is_dir").value<bool>()
-  );
+  return create(key(filepath), to_map(file));
 }
 
 
 void database::fs_t::remove(const QString& filepath)
 {
   debug() << "removing entry:" << filepath;
+  const auto entry = get(item(filepath));
+  if (entry.dir) {
+    qDebug() << "REMOVE: " << item(filepath).replace(".davdb", "");
+  }
   QFile::remove(item(filepath));
 }
 
 QList<database::entry_t> database::fs_t::entries(QString folder) const
 {
-  qDebug() << "Entries for " << folder;
-  
   QDir dir(item(folder).replace(".davdb", ""));
-//   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
-  
-  qDebug() << "Entries for 2 " << dir.absolutePath();
-  
   QList<entry_t> result;
   
+  
   Q_FOREACH(const auto info, dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
-    result << get(info.filePath());
-    qDebug() << "Entries for 3 " << info.filePath();
+    if (info.isDir()) continue;
+    result << get(info.filePath().replace(".davdb", ""));
   }
-  
-  
   
   return result;
 }
-
-// QStringList database::fs_t::folders(QString folder) const
-// {
-//   QDir dir(item(folder));
-//   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
-//   
-//   return dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
-// }
-// 
-// QStringList database::fs_t::files(QString folder) const
-// {
-//   QDir dir(item(folder));
-//   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
-//   
-//   return dir.entryList(QDir::Files | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
-// }
-
 
 QString database::fs_t::item(QString path) const
 {
@@ -186,6 +167,7 @@ const bool self_test = [] () {
     
     QFileInfo info("/tmp/davtest/tmp2");
     
+    fs.put("/sub1", fs.create("/sub1", info, info, true));
     fs.put("/sub1/sub2/file", fs.create("/sub1/sub2/file", info, info, false));
     auto entry = fs.get("/sub1/sub2/file");
 
@@ -196,13 +178,9 @@ const bool self_test = [] () {
     Q_ASSERT(entry.local.size == info.size());
     Q_ASSERT(entry.local.perms == info.permissions());
     
-//     Q_ASSERT(fs.folders() == QStringList() << "sub1");
-//     Q_ASSERT(fs.folders("/sub1") == QStringList() << "sub2");
-//     Q_ASSERT(fs.folders("sub1/sub2") == QStringList());
-    
-//     Q_ASSERT(fs.folders() == QStringList() << "sub1");
-//     Q_ASSERT(fs.entries("/sub1") == QStringList() << "sub2");
-//     Q_ASSERT(fs.entries("sub1/sub2") == QStringList() << "file");
+    Q_ASSERT(fs.entries().first().key == "sub1");
+    Q_ASSERT(fs.entries().last().key == "tmp");
+    Q_ASSERT(fs.entries("sub1/sub2").first().key == "sub1/sub2/file");
     
     fs.remove("/sub1/sub2/file");
   }

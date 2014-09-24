@@ -285,9 +285,9 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     resource.ctime = 0;
     if (data) {
         resource.ctime = ne_iso8601_parse(data);
-        if (resource.ctime == (time_t) -1)
+        if (resource.ctime == static_cast<time_t>(-1))
             resource.ctime = ne_httpdate_parse(data);
-        if (resource.ctime == (time_t) -1)
+        if (resource.ctime == static_cast<time_t>(-1))
             resource.ctime = 0;
     }
     
@@ -296,9 +296,9 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
     resource.mtime = 0;
     if (data) {
         resource.mtime = ne_httpdate_parse(data);
-        if (resource.mtime == (time_t) -1)
+        if (resource.mtime == static_cast<time_t>(-1))
             resource.mtime = ne_iso8601_parse(data);
-        if (resource.mtime == (time_t) -1)
+        if (resource.mtime == static_cast<time_t>(-1))
             resource.mtime = 0;
     }
     
@@ -377,13 +377,21 @@ session_t::session_t(QObject* parent, const QString& schema, const QString& host
                 Q_EMIT connected();
                 break;
             case ne_status_sending: 
-                if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
+                if (info->sr.progress == info->sr.total) {
+                    p_->lastprogress = QDateTime::currentDateTime();
+                    Q_EMIT put_progress(info->sr.progress, info->sr.total);
+                }
+                else if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
                     p_->lastprogress = QDateTime::currentDateTime();
                     Q_EMIT put_progress(info->sr.progress, info->sr.total);
                 }
                 break;
             case ne_status_recving:
-                if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
+                if (info->sr.progress == info->sr.total) {
+                    p_->lastprogress = QDateTime::currentDateTime();
+                    Q_EMIT get_progress(info->sr.progress, info->sr.total);
+                }
+                else if (p_->lastprogress.msecsTo(QDateTime::currentDateTime()) > 300) {
                     p_->lastprogress = QDateTime::currentDateTime();
                     Q_EMIT get_progress(info->sr.progress, info->sr.total);
                 }
@@ -442,11 +450,7 @@ bool session_t::is_closed() const
 
 
 QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
-    unescaped_path.prepend("/");
-    unescaped_path.replace("///", "/");
-    unescaped_path.replace("//", "/"); 
-//     if (unescaped_path.right(1) == "/") 
-//         unescaped_path = unescaped_path.left(unescaped_path.length() - 1);   
+    unescaped_path.prepend("/").replace("///", "/").replace("//", "/"); 
     
     qDebug() << Q_FUNC_INFO << "rawpath: " << unescaped_path;
     
@@ -455,7 +459,6 @@ QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
     qDebug() << Q_FUNC_INFO << "path: " << path.get();
     
 
-    
     std::shared_ptr<ne_propfind_handler> ph(
         ne_propfind_create(p_->session.get(), path.get(), NE_DEPTH_ONE),
         ne_propfind_destroy            
@@ -463,7 +466,6 @@ QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
 
     cache_context_t ctx;
     ctx.path = unescaped_path;  
-
 
     if (int err = ne_propfind_named(ph.get(), &prop_names[0], cache_result, &ctx)) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
@@ -473,10 +475,7 @@ QList<remote_res_t> session_t::get_resources(QString unescaped_path) {
 
 
 
-
-
-
-void session_t::head(const QString& unescaped_path, qlonglong& mtime, quint64& length)
+stat_t session_t::head(const QString& unescaped_path)
 {
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
@@ -485,37 +484,34 @@ void session_t::head(const QString& unescaped_path, qlonglong& mtime, quint64& l
         ne_request_destroy
     );
     
-    int neon_stat = ne_request_dispatch(request.get());
-    
-    if (neon_stat != NE_OK) {
+    if (ne_request_dispatch(request.get()) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
+
+    stat_t stat;
     
     const char *value = ne_get_response_header(request.get(), "Last-Modified");
-    
     if (!value) value = ne_get_response_header(request.get(), "Date");
+    
     if (value) {
-        mtime = ne_httpdate_parse(value);
-    } else {
-        mtime = 0;
+        stat.mtime = ne_httpdate_parse(value);
     }
     
     value = ne_get_response_header(request.get(), "Content-Length");
+    
     if (value) {
-        length = strtol(value, NULL, 10);
-    } else {
-        length = -1;
-    }    
+        stat.size = strtol(value, NULL, 10);
+    }
+    
+    return stat;
 }
 
 
 
-stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissions prems)
+stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissions perms)
 {
-//     etag_check_workaround(unescaped_path, etag);
-    
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);    
-    const std::string value = boost::lexical_cast<std::string>(prems);
+    const std::string value = boost::lexical_cast<std::string>(perms);
     
     const ne_proppatch_operation ops[2] = {
         {
@@ -532,19 +528,11 @@ stat_t session_t::set_permissions(const QString& unescaped_path, QFile::Permissi
         p_->session.get()
     };  
 
-    sleep(5);
     hook_helper_t hooks(p_->session.get(), &ctx);
-    qDebug() << ">>>";
-    int neon_stat = ne_proppatch(p_->session.get(), path.get(), ops);
-
-    qDebug() << "<<<";    
-    if (neon_stat != NE_OK) {
-        qDebug() << "!!!";    
+    if (ne_proppatch(p_->session.get(), path.get(), ops) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
 
-    qDebug() << "+++";    
-    
     return ctx.stat;
 }
 
@@ -558,9 +546,7 @@ stat_t session_t::get(const QString& unescaped_path, int fd)
     };  
     
     hook_helper_t hooker(p_->session.get(), &ctx);
-    int neon_stat = ne_get(p_->session.get(), path.get(), fd);
-
-    if (neon_stat != NE_OK) {
+    if (ne_get(p_->session.get(), path.get(), fd) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
 
@@ -577,9 +563,7 @@ stat_t session_t::put(const QString& unescaped_path, int fd)
     };  
     
     hook_helper_t hooker(p_->session.get(), &ctx);
-    int neon_stat = ne_put(p_->session.get(), path.get(), fd); 
-    
-    if (neon_stat != NE_OK) {
+    if (ne_put(p_->session.get(), path.get(), fd) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
     
@@ -588,8 +572,6 @@ stat_t session_t::put(const QString& unescaped_path, int fd)
 
 void session_t::remove(const QString& unescaped_path)
 {
-//     etag_check_workaround(unescaped_path, etag);
-    
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     neon_context_t ctx{
         stat_t(),
@@ -598,9 +580,7 @@ void session_t::remove(const QString& unescaped_path)
     }; 
     
     hook_helper_t hooker(p_->session.get(), &ctx);
-    int neon_stat = ne_delete(p_->session.get(), path.get());
-    
-    if (neon_stat != NE_OK) {
+    if (ne_delete(p_->session.get(), path.get()) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
     }
 }
@@ -608,9 +588,7 @@ void session_t::remove(const QString& unescaped_path)
 stat_t session_t::mkcol(const QString& raw)
 {
     QString unescaped_path = raw;
-    if (!unescaped_path.isEmpty() && unescaped_path.right(1) != "/") {
-        unescaped_path.push_back('/');
-    }
+    unescaped_path.append("/").replace("//", "/");
     
     std::shared_ptr<char> path(ne_path_escape(qPrintable(unescaped_path)), free);
     
@@ -621,17 +599,10 @@ stat_t session_t::mkcol(const QString& raw)
     };
     
     hook_helper_t hooker(p_->session.get(), &ctx);
-    int neon_stat = ne_mkcol(p_->session.get(), path.get());
-    
-    if (neon_stat != NE_OK) {
+    if (ne_mkcol(p_->session.get(), path.get()) != NE_OK) {
         throw ne_exception_t(http_code(p_->session.get()), ne_get_error(p_->session.get()));
-    }    
+    }
+    
     return ctx.stat;
 }
-
-void session_t::etag_check_workaround(const QString& unescaped_path, const QString& etag)
-{
-
-}
-
 

@@ -7,12 +7,12 @@
 #include "database/database.h"
 
 struct base_handler_t {
-    virtual void do_check(session_t& session, const action_t& action) const = 0;
-    virtual void do_request(session_t& session, database_p db, const action_t& action) const = 0;
+    virtual void do_check(session_t& session, database_p& db, const action_t& action) const = 0;
+    virtual void do_request(session_t& session, database_p& db, const action_t& action) const = 0;
     
     inline void operator() (session_t& session, database_p db, const action_t& action) const {
         try {
-            do_check(session, action);
+            do_check(session, db, action);
             do_request(session, db, action);
         }
         catch (std::runtime_error& e) {

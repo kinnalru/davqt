@@ -23,6 +23,7 @@ struct database_t {
   virtual QList<entry_t> entries(QString folder = QString()) const = 0;
 
   entry_t create(QString path, const stat_t& l, const stat_t& r, bool dir) const;
+  entry_t create(QString path, const QVariantMap& data) const;
   
   database_t(const database_t&) = delete;
   database_t& operator=(const database_t&) = delete;
