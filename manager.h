@@ -28,6 +28,7 @@ public:
 public Q_SLOTS:
   void start();  /// start updating and sync process
   void stop();   /// stop any activity
+  void wait();
 
 Q_SIGNALS:
 

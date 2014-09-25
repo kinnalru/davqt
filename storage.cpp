@@ -52,7 +52,7 @@ QString storage_t::path() const
 
 QString storage_t::prefix() const
 {
-  return p_->path.absolutePath();
+  return p_->root.absolutePath();
 }
 
 QFileInfo storage_t::info(const QString& file) const
@@ -92,6 +92,8 @@ QString storage_t::remote_file_path(const QString& file) const
 QFileInfoList storage_t::entries(QString folder) const
 {
   QDir dir(prefix() + QDir::separator() + folder);
+  qDebug() << "mkapth:" << dir.absolutePath();
+  dir.mkpath(".");
   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
   
   QFileInfoList result = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
@@ -106,12 +108,6 @@ QFileInfoList storage_t::entries(QString folder) const
 }
 
 
-
-
-
-
-
-
 namespace {
   
 const bool self_test = [] () {
@@ -122,7 +118,7 @@ const bool self_test = [] () {
     
     Q_ASSERT(storage.root() == "/tmp/davtest");
     Q_ASSERT(storage.path() == "files");
-    Q_ASSERT(storage.prefix() == "/tmp/davtest/files");
+    Q_ASSERT(storage.prefix() == "/tmp/davtest");
     
     Q_ASSERT(storage.folder("folder1/folder2//fodler3/file") == "folder1/folder2/fodler3/");
     Q_ASSERT(storage.file("folder1/folder2/fodler3/file") == "file");

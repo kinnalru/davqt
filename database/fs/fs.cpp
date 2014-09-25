@@ -110,9 +110,22 @@ void database::fs_t::remove(const QString& filepath)
   
   const auto entry = get(item(filepath));
   if (entry.dir) {
-    qDebug() << "REMOVE: " << item(filepath).replace(".davdb", "");
+    QDirIterator it(item(filepath).replace(".davdb", ""), QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+      it.next();
+      QFile::remove(it.fileInfo().absoluteFilePath());
+    }    
   }
   QFile::remove(item(filepath));
+}
+
+void database::fs_t::clear()
+{
+  QDirIterator it(p_->db.absoluteFilePath(""), QDir::Files, QDirIterator::Subdirectories);
+  while (it.hasNext()) {
+    it.next();
+    QFile::remove(it.fileInfo().absoluteFilePath());
+  }
 }
 
 QList<database::entry_t> database::fs_t::entries(QString folder) const
@@ -122,7 +135,7 @@ QList<database::entry_t> database::fs_t::entries(QString folder) const
   QList<entry_t> result;
   
   Q_FOREACH(const auto info, dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
-    if (info.isDir()) continue;
+    if (info.isDir() || info.filePath() == ".davdb") continue;
     result << get(info.filePath().replace(".davdb", ""));
   }
   
@@ -133,6 +146,25 @@ QString database::fs_t::item(QString path) const
 {
   return p_->db.absoluteFilePath(key(path)) + ".davdb";
 }
+
+bool database::fs_t::initialized() const
+{
+  QSettings file(p_->db.absoluteFilePath("") + ".davdb", QSettings::IniFormat);
+  return file.value("localstorage").toString() == storage().root();
+}
+
+bool database::fs_t::set_initialized(bool v) const
+{
+  QSettings file(p_->db.absoluteFilePath("") + ".davdb", QSettings::IniFormat);
+  if (v) {
+    file.setValue("localstorage", storage().root());
+  }
+  else {
+    file.remove("localstorage");
+  }
+  file.sync();
+}
+
 
 
 

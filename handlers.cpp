@@ -288,7 +288,7 @@ struct remove_local_handler : base_handler_t {
 struct remove_remote_handler : base_handler_t {
     void do_check(session_t& session, database_p& db, const action_t& action) const {
         Q_ASSERT(action.local.empty()); // local MUST not exists - for changes compare 
-        Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity
+//         Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity
     
     }
 

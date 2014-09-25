@@ -35,7 +35,7 @@ struct storage_t {
   QString remote_file_path(const QString& file) const;
   
   QFileInfoList entries(QString folder = QString()) const;
-  
+
   
 private:
   struct Pimpl;

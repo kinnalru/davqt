@@ -114,15 +114,12 @@ void syncer_t::run()
 
   qDebug() << "Sync thread finished";
   Q_EMIT finished();
-  qDebug() << "Sync thread finished2";
 }
 
 void syncer_t::stop()
 {
   p_->stop = true;
-  qDebug() << "ss0";
   Q_EMIT stopping();
-  qDebug() << "ss1";
   p_->available.wakeAll();
 }
 

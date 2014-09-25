@@ -6,6 +6,12 @@ struct stop_exception_t : public std::runtime_error {
   stop_exception_t() : std::runtime_error("stop") {}
 };
 
+namespace {
+  QDebug debug() {
+    return qDebug() << " > [UPDATH]: ";
+  }
+};
+
 struct updater_t::Pimpl {
     database_p db;
     manager_t::connection conn;
@@ -32,7 +38,7 @@ updater_t::~updater_t()
 
 void updater_t::run()
 {
-  qDebug() << "Update thread started";
+  debug() << "Update thread started";
   Q_EMIT started();
   try {
     session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
@@ -60,16 +66,15 @@ void updater_t::run()
     }
   }
   catch (const stop_exception_t& e) {
-    qDebug() << "Update thread force to stop";
+    debug() << "Update thread force to stop";
   }
   catch (const std::exception& e) {
-    qDebug() << "Update thread exception:" << e.what();
+    debug() << "Update thread exception:" << e.what();
     Q_EMIT error(e.what());
   }
 
-  qDebug() << "Update thread finished";
+  debug() << "Update thread finished";
   Q_EMIT finished();
-  qDebug() << "Update thread finished2";
 }
 
 void updater_t::stop()
@@ -147,7 +152,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
     if (p_->stop) throw stop_exception_t();
     
     const QString lf = p_->db->key(folder);
-    qDebug() << Q_FUNC_INFO << "Local:" << lf << " Remote:" << folder;
+    debug() << Q_FUNC_INFO << "Local:" << lf << " Remote:" << folder;
     
     const auto remotes = session.get_resources(folder);
     const auto remote_storage = std::accumulate(remotes.begin(), remotes.end(),
@@ -205,13 +210,13 @@ Actions updater_t::update(session_t& session, const QString& folder)
             [&] (QSet<QString>& result, const std::map<QString, database::entry_t>::value_type& pair) {
             if (!pair.second.dir) {
                 result << pair.first;
-                qDebug() << pair.first << pair.second.dir;
+                debug() << pair.first << pair.second.dir;
             }
             return result;
             });
 
 
-        qDebug() << "- files -";
+        debug() << "- files -";
         blank_actions << process(db_files, local_files, remote_files, session);
     }
     
@@ -244,13 +249,13 @@ Actions updater_t::update(session_t& session, const QString& folder)
           return result;
         });
       
-      qDebug() << "- dirs -";
+      debug() << "- dirs -";
       blank_actions << process(db_dirs, local_dirs, remote_dirs, session, lf);
     }
     
 
     
-    qDebug() << "Update results:" << blank_actions;
+    debug() << "Update results:" << blank_actions;
     
     return blank_actions;
 }
@@ -307,7 +312,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
     Q_FOREACH(const auto entry, snap.to_compare) {
       if (folder == entry) continue;
       
-      p_->folders << p_->db->key(folder + "/" + entry);
+      p_->folders << p_->db->key(entry);
     }
   }
 
@@ -341,7 +346,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
 Actions updater_t::fill(Actions actions) const
 {
   for (auto it = actions.begin(); it != actions.end(); ++it) {
-    qDebug() << action_t::type_text(it->type);
+    debug() << action_t::type_text(it->type);
     switch(it->type) {
       case action_t::upload:
         it->local = stat_t(p_->local_cache.at(it->key)); break;
@@ -349,7 +354,7 @@ Actions updater_t::fill(Actions actions) const
         it->remote = stat_t(p_->remote_cache.at(it->key)); 
         break;
       case action_t::compare:
-//             qDebug() << QMap<QString, QFileInfo>(p_->local_storage).keys();
+//             qdebug() << QMap<QString, QFileInfo>(p_->local_storage).keys();
         it->local  = stat_t(p_->local_cache.at(it->key));
         it->remote = stat_t(p_->remote_cache.at(it->key));
         it->type = compare(*it);
@@ -371,8 +376,8 @@ Actions updater_t::fill(Actions actions) const
 }
 
 action_t::type_e updater_t::compare(const action_t& action) const {
-  qDebug() << Q_FUNC_INFO;
-  qDebug() << "comparing :" << action.key;
+  debug() << Q_FUNC_INFO;
+  debug() << "comparing :" << action.key;
   
   const database::entry_t db_entry = p_->db->get(action.key);
   
@@ -385,50 +390,50 @@ action_t::type_e updater_t::compare(const action_t& action) const {
   
   if (dlstat.mtime != lstat.mtime) {
       mask |= action_t::local_changed;
-      qDebug() << " -> local time changed:" << QDateTime::fromTime_t(dlstat.mtime) << " -> " << QDateTime::fromTime_t(lstat.mtime);
+      debug() << " -> local time changed:" << QDateTime::fromTime_t(dlstat.mtime) << " -> " << QDateTime::fromTime_t(lstat.mtime);
   }
   
   if (dlstat.size != lstat.size) {
       mask |= action_t::local_changed;
-      qDebug() << " -> local size changed:" << dlstat.size << " -> " << lstat.size;
+      debug() << " -> local size changed:" << dlstat.size << " -> " << lstat.size;
   }
   
   if (dlstat.perms != lstat.perms) {
       mask |= action_t::local_changed;
-      qDebug() << " -> local permissions changed:" << dlstat.perms << " -> " << lstat.perms;
+      debug() << " -> local permissions changed:" << dlstat.perms << " -> " << lstat.perms;
   }
   
   
   if (drstat.mtime != rstat.mtime) {
       mask |= action_t::remote_changed;
-      qDebug() << " -> remote time changed:" << QDateTime::fromTime_t(drstat.mtime) << " -> " << QDateTime::fromTime_t(rstat.mtime);
+      debug() << " -> remote time changed:" << QDateTime::fromTime_t(drstat.mtime) << " -> " << QDateTime::fromTime_t(rstat.mtime);
   }
   
   if (drstat.size != rstat.size) {
       mask |= action_t::remote_changed;
-      qDebug() << " -> remote size changed:" << drstat.size << " -> " << rstat.size;
+      debug() << " -> remote size changed:" << drstat.size << " -> " << rstat.size;
   }
   
   if (drstat.perms != drstat.perms) {
       mask |= action_t::remote_changed;
-      qDebug() << " -> remote permissions changed:" << drstat.perms << " -> " << drstat.perms;
+      debug() << " -> remote permissions changed:" << drstat.perms << " -> " << drstat.perms;
   }
   
 
   if (mask == action_t::local_changed) {
-      qDebug() << " -> just upload";
+      debug() << " -> just upload";
       return action_t::local_changed;
   }
   else if (mask == action_t::remote_changed) {
-      qDebug() << " ** -> just download";
+      debug() << " ** -> just download";
       return action_t::remote_changed;
   }
   else if ((mask & action_t::local_changed) && (mask & action_t::remote_changed)) {
-      qDebug() << " ** -> CONFLICT";
+      debug() << " ** -> CONFLICT";
       return action_t::conflict;
   }
   
-  qDebug() << "** -> UNCHANGED";
+  debug() << "** -> UNCHANGED";
   return action_t::unchanged;
 }
 

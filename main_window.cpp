@@ -164,13 +164,16 @@ void main_window_t::restart()
     + "db"
     + QDir::separator()
     + settings().host().replace(QRegExp("[:/]+"), "_")
-    + QDir::separator()
-    + prefix);
+    );
   
   p_->db.reset();
   p_->storage.reset(new storage_t(settings().localfolder(), prefix));
   p_->db.reset(new database::fs_t(*p_->storage, dbpath));
 
+  if (!p_->db->initialized()) {
+    p_->db->clear();
+  }
+  
   p_->enabled_a->setCheckable(true);
   p_->enabled_a->setChecked(settings().enabled());  
 

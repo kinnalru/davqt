@@ -29,6 +29,12 @@ struct database_t {
   database_t& operator=(const database_t&) = delete;
    
   inline const storage_t& storage() const {return storage_;}
+  
+  virtual void clear() = 0;
+  
+  ///Used to detect first initialized datafiles
+  virtual bool initialized() const = 0;
+  virtual bool set_initialized(bool) const = 0;
     
 private:
   const storage_t& storage_;
