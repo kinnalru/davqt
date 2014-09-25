@@ -322,12 +322,12 @@ void cache_result(void *userdata, const ne_uri *uri, const ne_prop_result_set *s
         resource.name = QFileInfo(resource.path).fileName();        
     }
     
-    qDebug() << "resource uri:" << ne_path_unescape(uri->path);
-    qDebug() << "resource ctx:" << ctx->path;
-    qDebug() << "resource ctx a:" << QFileInfo(ctx->path).absoluteFilePath();
-    qDebug() << "resource path:" << resource.path ;
-    qDebug() << "resource path a:" << QFileInfo(resource.path).absoluteFilePath() ;
-    qDebug() << "resource name:" << resource.name ;
+//     qDebug() << "resource uri:" << ne_path_unescape(uri->path);
+//     qDebug() << "resource ctx:" << ctx->path;
+//     qDebug() << "resource ctx a:" << QFileInfo(ctx->path).absoluteFilePath();
+//     qDebug() << "resource path:" << resource.path ;
+//     qDebug() << "resource path a:" << QFileInfo(resource.path).absoluteFilePath() ;
+//     qDebug() << "resource name:" << resource.name ;
     
     ctx->resources << resource;
 }

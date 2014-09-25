@@ -27,6 +27,8 @@
 
 #include "sync.h"
 
+class QTreeWidgetItem;
+
 class main_window_t : public QWidget
 {
     Q_OBJECT

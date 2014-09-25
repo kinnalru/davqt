@@ -23,26 +23,31 @@ public:
   explicit manager_t(database_p db, connection conn);
   virtual ~manager_t();
   
-  enum status_e {
-    free,
-    busy,
-    stopping    
-  };
+  bool busy() const;
   
-  status_e status() const;
+//   enum status_e {
+//     free      = 1 << 1,
+//     updating  = 1 << 2,
+//     syncing   = 1 << 3,
+//     stopping  = 1 << 4,
+//     
+//     busy_upd  = updating | stopping,
+//     busy_sync = syncing  | stopping,
+//     
+//     busy      = busy_upd | busy_sync,
+//   };
+//   
+//   status_e status() const;
   
 public Q_SLOTS:
-  void start_update(); /// calculate tasks for sync
-  void start_sync();   /// sync 
-  void stop();         /// stop any activity
+  void start();  /// start updating and sync process
+  void stop();   /// stop any activity
 
 Q_SIGNALS:
 
-  /// manager status change
-  void status(status_e);
-  void update_finished(const Actions& actions);
-  void sync_finished();
+  void finished();
   
+  void new_actions(const Actions& actions);
   void error(const QString);
   
   void action_started(const action_t& action);
@@ -51,13 +56,14 @@ Q_SIGNALS:
   void action_error(const action_t& action, const QString& error);
   
   void need_stop();
+  void can_finish();
   
 private Q_SLOTS:
-  void update_result(const Actions& actions);
-  void update_complete();
-  void sync_complete();
+  void receive_new_actions(const Actions& actions);
 
 private:
+  void start_update(); /// calculate tasks for sync
+  void start_sync();   /// sync   
   Q_INVOKABLE action_t next_sync_action();
   
 private:

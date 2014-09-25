@@ -149,26 +149,36 @@ main_window_t::~main_window_t() {
 
 void main_window_t::restart()
 {
-//     if (p_->manager) {
-//         p_->manager->disconnect(this);
-//         delete p_->manager;
-//         p_->manager = NULL;
-//     }
+    if (p_->manager) {
+      p_->manager->disconnect(this);
+      p_->manager->stop();
+      p_->manager.reset();
+    }
 
-    url_t checker;
-    
     const QUrl url(settings().host());
     
     p_->ui.remotefolder->setText(url.toString());
     p_->ui.localfolder->setText(settings().localfolder());
     
-    thread_manager_t::connection conn = {
+    manager_t::connection conn = {
         url.scheme(),
         url.host(),
         url.port(),
         settings().username(),
         settings().password()
     };
+    
+    
+    p_->manager.reset(new manager_t(p_->db, conn));
+    
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(new_actions(Actions)), this, SLOT(status_updated(Actions))));
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
+  
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
+    Q_VERIFY(connect(p_->manager.get(), SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+  
     
 /*    p_->manager = new thread_manager_t(0, p_->db, conn, settings().localfolder(), url.path() + settings().remotefolder());
 
@@ -271,108 +281,38 @@ void main_window_t::sync()
         force_sync();
 }
 
-struct MyThread: public QThread {
-  explicit MyThread() {
-//     qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
-  }
-  
-    virtual ~MyThread() {
-//       qDebug() << "<<<<< THREAD destroyed";
-    }
-  
+// struct MyThread: public QThread {
+//   explicit MyThread() {
+// //     qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
+//   }
+//   
+//     virtual ~MyThread() {
+// //       qDebug() << "<<<<< THREAD destroyed";
+//     }
+//   
+// 
+// };
+// 
+// void initialize_thread(QObject* object) {
+//   MyThread* th = new MyThread();
+//   Q_VERIFY(th->connect(th, SIGNAL(finished()), th, SLOT(deleteLater())));  
+//   th->start();
+//   object->moveToThread(th);
+//   Q_VERIFY(object->connect(object, SIGNAL(destroyed(QObject*)), th, SLOT(quit())));
+// }
 
-};
-
-void initialize_thread(QObject* object) {
-  MyThread* th = new MyThread();
-  Q_VERIFY(th->connect(th, SIGNAL(finished()), th, SLOT(deleteLater())));  
-  th->start();
-  object->moveToThread(th);
-  Q_VERIFY(object->connect(object, SIGNAL(destroyed(QObject*)), th, SLOT(quit())));
-}
-
-
-#include "manager.h"
 
 
 void main_window_t::force_sync()
 {
-  const QUrl url(settings().host());
-  
-  manager_t::connection conn = {
-      url.scheme(),
-      url.host(),
-      url.port(),
-      settings().username(),
-      settings().password()
-  };
-  
-  
-  if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
-  
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(update_finished(Actions)), this, SLOT(status_updated(Actions))));
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
-  
-  Q_VERIFY(::connectOnce(p_->manager.get(), SIGNAL(update_finished(Actions)), [this] {
-    start_sync();
-  }));
-  
-  p_->manager->start_update();
-  
-//   updater_t* u = new updater_t(p_->db, conn);
-//   Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
-//   initialize_thread(u);
-//   
-//   Q_VERIFY(connect(u, SIGNAL(status(Actions)), this, SLOT(status_updated(Actions))));
-//   Q_VERIFY(connect(u, SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
-//   
-//   Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
-//       start_sync();
-//   }));
-//   QTimer::singleShot(0, u, SLOT(start()));
+  p_->ui.actions->clear();
+  p_->manager->start();
 }
 
 
 void main_window_t::start_sync()
 {
-  const QUrl url(settings().host());
-  
-  manager_t::connection conn = {
-      url.scheme(),
-      url.host(),
-      url.port(),
-      settings().username(),
-      settings().password()
-  };
-  
-  if(!p_->manager.get()) p_->manager.reset(new manager_t(p_->db, conn));
-  
-//   if (p_->manager->status() != manager_t::free) {
-//     QTimer::singleShot(100, this, SLOT(start_sync()));
-//     return;
-//   }
-  
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
-  Q_VERIFY(connect(p_->manager.get(), SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-  
-  p_->manager->start_sync();
-  
-//   syncer_t* u = new syncer_t(p_->db, conn, p_->actions);
-//   Q_VERIFY(connect(u, SIGNAL(finished()), u, SLOT(deleteLater())));  
-//   initialize_thread(u);
-//   
-//   Q_VERIFY(connect(u, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-//   Q_VERIFY(connect(u, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-//   Q_VERIFY(connect(u, SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
-//   Q_VERIFY(connect(u, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-// 
-//   Q_VERIFY(::connectOnce(u, SIGNAL(finished()), [this] {
-//       settings().set_last_sync(QDateTime::currentDateTime());
-//   }));
-//   
-//   QTimer::singleShot(0, u, SLOT(start()));
+//   p_->manager->start_sync();
 }
 
 void main_window_t::status_updated(const Actions& actions)
@@ -435,19 +375,6 @@ void main_window_t::status_updated(const Actions& actions)
         }
         allitems.removeAll(group);
         allitems.removeAll(item);
-    }
-
-    Q_FOREACH(QTreeWidgetItem* item, allitems) {
-        int index = p_->ui.actions->indexOfTopLevelItem(item);
-        if (index == -1) {
-            allitems.removeAll(item);
-            delete item->parent()->takeChild(item->parent()->indexOfChild(item));
-        }
-    }
-    
-    Q_FOREACH(QTreeWidgetItem* item, allitems) {
-        int index = p_->ui.actions->indexOfTopLevelItem(item);
-        delete p_->ui.actions->takeTopLevelItem(index);
     }
     
     auto unchanged = groupit(action_t::unchanged);

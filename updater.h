@@ -22,14 +22,15 @@ public Q_SLOTS:
   void stop();
     
 Q_SIGNALS:
-  void status(const Actions& actions);
+  void new_actions(const Actions& actions);
   
-  void error(const QString& actions);
+  void started();
+  void error(const QString& message);
   void finished();
   void stopping();
     
 private:
-  Actions update(session_t& session, const QString& l, const QString& rf);
+  Actions update(session_t& session, const QString& folder);
   Actions process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder = QString());
   Actions fill(Actions actions) const;
   

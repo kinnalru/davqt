@@ -20,6 +20,8 @@ public:
    
 public Q_SLOTS:
   void stop();
+  void new_actions_available();
+  void can_finish();
     
 Q_SIGNALS:
   void action_started(const action_t& action);
@@ -27,6 +29,7 @@ Q_SIGNALS:
   void action_success(const action_t& action);
   void action_error(const action_t& action, const QString& error);  
 
+  void started();
   void error(const QString&);
   void finished();
   void stopping();
