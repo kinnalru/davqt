@@ -29,11 +29,10 @@
 
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
-
-
 #include "settings/main_settings.h"
 #include "settings/settings.h"
 
+#include "database/fs/fs.h"
 #include "manager.h"
 
 #include "tools.h"
@@ -44,6 +43,7 @@ struct main_window_t::Pimpl {
     Ui_main ui;
     
     database_p db;
+    std::unique_ptr<storage_t> storage;
     
     std::unique_ptr<manager_t> manager;
     Actions actions;
@@ -52,11 +52,13 @@ struct main_window_t::Pimpl {
     QAction* settings_a;
     QAction* sync_a;
     QAction* enabled_a;
+    
+    gui_state_e state;
 };
 
 QDateTime start_time_c;
 
-main_window_t::main_window_t(database_p db)
+main_window_t::main_window_t()
     : QWidget(NULL)
     , p_(new Pimpl())
 {
@@ -65,7 +67,6 @@ main_window_t::main_window_t(database_p db)
     static int r2 = qRegisterMetaType<QList<action_t>>("QList<action_t>");    
     static int r3 = qRegisterMetaType<Actions>("Actions");   
   
-    p_->db = db;
     p_->ui.setupUi(this);
 
     QMenu* menu = new QMenu();
@@ -89,6 +90,10 @@ main_window_t::main_window_t(database_p db)
     p_->ui.sync->setDefaultAction(p_->sync_a);
     p_->ui.settings->setDefaultAction(p_->settings_a);
 
+    QHeaderView *verticalHeader = p_->ui.log->verticalHeader();
+    verticalHeader->setResizeMode(QHeaderView::Fixed);
+    verticalHeader->setDefaultSectionSize(16);
+    
     
     ::connect(p_->settings_a, SIGNAL(triggered(bool)), [this] {
         preferences_dialog d(preferences_dialog::Auto, true, this);
@@ -97,30 +102,29 @@ main_window_t::main_window_t(database_p db)
         d.add_item(new main_settings_t());
         d.exec();
         
-//         if (p_->manager->is_busy()) {
-//             QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
-//                 QMessageBox::Yes | QMessageBox::No
-//             );
-//             
-//             Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &mb, SLOT(reject())));
-//             QMessageBox::StandardButton result = QMessageBox::StandardButton(mb.exec());  
-//             if (mb.clickedButton()) {
-//                 if (result == QMessageBox::Yes) {
-//                     QProgressDialog waiter(tr("Waiting for sync finished..."), tr("Break"), 0, 0);
-//                     Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), &waiter, SLOT(reset())));
-//                     waiter.exec();
-//                     if (waiter.wasCanceled()) {
-//                         p_->manager->stop();
-//                     }
-//                 } else {
-//                     p_->manager->stop();
-//                 }         
-//             }
-//         }
-//         restart();
+        if (p_->manager->busy()) {
+            QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
+                QMessageBox::Yes | QMessageBox::No
+            );
+            
+            Q_VERIFY(connect(p_->manager.get(), SIGNAL(finished()), &mb, SLOT(reject())));
+            QMessageBox::StandardButton result = QMessageBox::StandardButton(mb.exec());  
+            if (mb.clickedButton()) {
+                if (result == QMessageBox::Yes) {
+                    QProgressDialog waiter(tr("Waiting for sync finished..."), tr("Break"), 0, 0);
+                    Q_VERIFY(connect(p_->manager.get(), SIGNAL(finished()), &waiter, SLOT(reset())));
+                    waiter.exec();
+                    if (waiter.wasCanceled()) {
+                        p_->manager->stop();
+                    }
+                } else {
+                    p_->manager->stop();
+                }         
+            }
+        }
+        restart();
     });
     
-    p_->enabled_a->setCheckable(true);
     ::connect(p_->enabled_a, SIGNAL(toggled (bool)), [this] {
         settings().set_enabled(p_->enabled_a->isChecked());
         if (p_->enabled_a->isChecked()) {
@@ -130,9 +134,6 @@ main_window_t::main_window_t(database_p db)
             set_state(disabled);
         }
     });
-
-    p_->enabled_a->setChecked(settings().enabled());
-    
 
     restart();
     QTimer* timer = new QTimer(this);
@@ -149,53 +150,60 @@ main_window_t::~main_window_t() {
 
 void main_window_t::restart()
 {
-    if (p_->manager) {
-      p_->manager->disconnect(this);
-      p_->manager->stop();
-      p_->manager.reset();
+  if (p_->manager) {
+    p_->manager->disconnect(this);
+    p_->manager->stop();
+    p_->manager.reset();
+  }
+  
+  const QString apppath = QDesktopServices::storageLocation(QDesktopServices::DataLocation);
+  
+  const QString prefix = settings().remotefolder();
+  const QString dbpath = QDir::cleanPath(apppath
+    + QDir::separator()
+    + "db"
+    + QDir::separator()
+    + settings().host().replace(QRegExp("[:/]+"), "_")
+    + QDir::separator()
+    + prefix);
+  
+  p_->db.reset();
+  p_->storage.reset(new storage_t(settings().localfolder(), prefix));
+  p_->db.reset(new database::fs_t(*p_->storage, dbpath));
+
+  p_->enabled_a->setCheckable(true);
+  p_->enabled_a->setChecked(settings().enabled());  
+
+  const QUrl url(settings().host());
+  
+  p_->ui.remotefolder->setText(url.toString());
+  p_->ui.localfolder->setText(settings().localfolder());
+  
+  manager_t::connection conn = {
+    url.scheme(),
+    url.host(),
+    url.port(),
+    settings().username(),
+    settings().password()
+  };
+  
+  p_->manager.reset(new manager_t(p_->db, conn));
+  
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(new_actions(Actions)), this, SLOT(status_updated(Actions))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),       this, SLOT(set_error(QString)))); 
+
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
+  Q_VERIFY(connect(p_->manager.get(), SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
+
+  Q_VERIFY(::connect(p_->manager.get(), SIGNAL(finished()), [this] {
+    settings().set_last_sync(QDateTime::currentDateTime());
+    
+    if (p_->state != error) {
+      set_state(complete);
     }
-
-    const QUrl url(settings().host());
-    
-    p_->ui.remotefolder->setText(url.toString());
-    p_->ui.localfolder->setText(settings().localfolder());
-    
-    manager_t::connection conn = {
-        url.scheme(),
-        url.host(),
-        url.port(),
-        settings().username(),
-        settings().password()
-    };
-    
-    
-    p_->manager.reset(new manager_t(p_->db, conn));
-    
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(new_actions(Actions)), this, SLOT(status_updated(Actions))));
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(error(QString)),  this, SLOT(status_error(QString)))); 
-  
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
-    Q_VERIFY(connect(p_->manager.get(), SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-  
-    
-/*    p_->manager = new thread_manager_t(0, p_->db, conn, settings().localfolder(), url.path() + settings().remotefolder());
-
-    Q_VERIFY(connect(p_->manager, SIGNAL(status_updated(Actions)), this, SLOT(status_updated(Actions))));
-    Q_VERIFY(connect(p_->manager, SIGNAL(status_error(QString)), this, SLOT(status_error(QString))));             
-    
-    Q_VERIFY(connect(p_->manager, SIGNAL(sync_started()), this, SLOT(sync_started())));            
-    Q_VERIFY(connect(p_->manager, SIGNAL(sync_finished()), this, SLOT(sync_finished())));     
-    
-    Q_VERIFY(connect(p_->manager, SIGNAL(action_started(action_t)), this, SLOT(action_started(action_t))));
-    Q_VERIFY(connect(p_->manager, SIGNAL(action_success(action_t)), this, SLOT(action_success(action_t))));
-    Q_VERIFY(connect(p_->manager, SIGNAL(action_error(action_t,QString)), this, SLOT(action_error(action_t,QString))));
-    Q_VERIFY(connect(p_->manager, SIGNAL(progress(action_t,qint64,qint64)), this, SLOT(action_progress(action_t,qint64,qint64))));
-    
-    Q_VERIFY(::connect(p_->manager, SIGNAL(sync_finished()), [] {
-        settings().set_last_sync(QDateTime::currentDateTime());
-    }));  */ 
+  }));
 }
 
 
@@ -244,75 +252,48 @@ QTreeWidgetItem* find_item(const QTreeWidget* tree, const QString& text) {
 
 void main_window_t::message_activated()
 {
-    const QString local_file = p_->tray->property("file").toString();
-    tray_activated(QSystemTrayIcon::QSystemTrayIcon::Trigger);
-    if (!local_file.isNull()) {
-        auto it = find_item(p_->ui.actions, local_file);
-        Q_ASSERT(it);
-        p_->ui.actions->setCurrentItem(it);
-        
-        it = find_item(p_->ui.errors, local_file);
-        Q_ASSERT(it);
-        p_->ui.errors->setCurrentItem(it);
-    }
+  const QString local_file = p_->tray->property("file").toString();
+  tray_activated(QSystemTrayIcon::QSystemTrayIcon::Trigger);
+  if (!local_file.isNull()) {
+    auto it = find_item(p_->ui.actions, local_file);
+    Q_ASSERT(it);
+    p_->ui.actions->setCurrentItem(it);
+    
+    it = find_item(p_->ui.errors, local_file);
+    Q_ASSERT(it);
+    p_->ui.errors->setCurrentItem(it);
+  }
 }
 
 void main_window_t::sync()
 {
-    const int interval = settings().interval();
-    const QDateTime last = settings().last_sync();
+  const int interval = settings().interval();
+  const QDateTime last = settings().last_sync();
 
-    qDebug() << last;
-    
-    int to_sync = (last.isValid())
-      ? std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0)
-      : 0;
-    
-    p_->ui.to_sync->setText(tr("(to sync: %1s)").arg(to_sync));
-    p_->ui.last_sync->setText(tr("Last sync: %1").arg(last.toString()));
+  int to_sync = (last.isValid())
+    ? std::max(QDateTime::currentDateTime().secsTo(last.addSecs(interval)), 0)
+    : 0;
+  
+  p_->ui.to_sync->setText(tr("(to sync: %1s)").arg(to_sync));
+  p_->ui.last_sync->setText(tr("Last sync: %1").arg(last.toString()));
 
-    if (to_sync != 0)
-        return;
-    
-    
-    if (start_time_c.secsTo(QDateTime::currentDateTime()) < 5) return;
-    
-    if (settings().enabled() && interval> 0)
-        force_sync();
+  if (to_sync != 0)
+    return;
+  
+  
+  if (start_time_c.secsTo(QDateTime::currentDateTime()) < 5) return;
+  
+  if (settings().enabled() && interval> 0)
+    force_sync();
 }
-
-// struct MyThread: public QThread {
-//   explicit MyThread() {
-// //     qDebug() << ">>>>>>>>>>>>>> THREAD CREATTED";
-//   }
-//   
-//     virtual ~MyThread() {
-// //       qDebug() << "<<<<< THREAD destroyed";
-//     }
-//   
-// 
-// };
-// 
-// void initialize_thread(QObject* object) {
-//   MyThread* th = new MyThread();
-//   Q_VERIFY(th->connect(th, SIGNAL(finished()), th, SLOT(deleteLater())));  
-//   th->start();
-//   object->moveToThread(th);
-//   Q_VERIFY(object->connect(object, SIGNAL(destroyed(QObject*)), th, SLOT(quit())));
-// }
-
-
 
 void main_window_t::force_sync()
 {
+  if (p_->manager.get() && p_->manager->busy()) return;
+  
+  set_state(syncing);
   p_->ui.actions->clear();
   p_->manager->start();
-}
-
-
-void main_window_t::start_sync()
-{
-//   p_->manager->start_sync();
 }
 
 void main_window_t::status_updated(const Actions& actions)
@@ -388,61 +369,64 @@ void main_window_t::status_updated(const Actions& actions)
     p_->actions = actions;
 }
 
-void main_window_t::status_error(const QString& error)
+void main_window_t::set_error(const QString& error)
 {
-    const auto text = tr("Can't update status");
-    auto it = find_item(p_->ui.errors, text);
-    if (!it) {
-        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << text << error);
-        p_->ui.errors->addTopLevelItem(item);
-    }
-    
+    log(QString("Error: %1 ").arg(error));
+//     const auto text = tr("Can't update status");
+//     auto it = find_item(p_->ui.errors, text);
+//     if (!it) {
+//         QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << text << error);
+//         p_->ui.errors->addTopLevelItem(item);
+//     }
+//     
     set_state(gui_state_e::error);
 }
 
 void main_window_t::action_started(const action_t& action)
 {
-    auto it = find_item(p_->ui.actions, action.key);
-    Q_ASSERT(it);
-    it->setText(1, tr("In progress..."));
-    p_->ui.actions->setItemWidget(it, 2, new QProgressBar());                
-    if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
-        pb->setMinimum(0);
-        pb->setMaximum(0);
-        pb->setValue(0);
-        pb->setFormat("%v of %m (%p%)");
-    }
+  log(QString("Started %1: %2").arg(action.type_text()).arg(action.key), action);
+  auto it = find_item(p_->ui.actions, action.key);
+  Q_ASSERT(it);
+  it->setText(1, tr("In progress..."));
+  p_->ui.actions->setItemWidget(it, 2, new QProgressBar());                
+  if (QProgressBar* pb = get_pb(p_->ui.actions, it)) {
+    pb->setMinimum(0);
+    pb->setMaximum(0);
+    pb->setValue(0);
+    pb->setFormat("%v of %m (%p%)");
+  }
 }
 
 
 void main_window_t::action_success(const action_t& action)
 {
-    auto it = find_item(p_->ui.actions, action.key);
-    Q_ASSERT(it);
-    it->setText(1, tr("Completed"));
-    action_finished(action);    
+  log(QString("Completed %1: %2").arg(action.type_text()).arg(action.key), action);
+  auto it = find_item(p_->ui.actions, action.key);
+  Q_ASSERT(it);
+  it->setText(1, tr("Completed"));
+  action_finished(action);    
 }
 
 void main_window_t::action_error(const action_t& action, const QString& message)
 {
-    auto it = find_item(p_->ui.actions, action.key);
-    Q_ASSERT(it);
-    it->setText(1, tr("Error"));
-    action_finished(action);    
-    
-    it->setTextColor(0, Qt::red);
-    it->parent()->insertChild(0, it);
-    it->treeWidget()->insertTopLevelItem(0, it->parent());
-    
-    it = find_item(p_->ui.errors, action.key);
-    if (!it) {
-        QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.key << message);
-        p_->ui.errors->addTopLevelItem(item);
-    }
-    
-    p_->tray->showMessage(tr("Error when sync file %1").arg(action.key), message, QSystemTrayIcon::Warning, 7000);
-    p_->tray->setProperty("file", action.key);
-    set_state(error);
+  log(QString("Error %1: %2(%3)").arg(action.type_text()).arg(action.key).arg(message), action);
+  auto it = find_item(p_->ui.actions, action.key);
+  Q_ASSERT(it);
+  it->setText(1, tr("Error"));
+  action_finished(action);    
+  
+  it->setTextColor(0, Qt::red);
+  it->parent()->insertChild(0, it);
+  it->treeWidget()->insertTopLevelItem(0, it->parent());
+  
+  it = find_item(p_->ui.errors, action.key);
+  if (!it) {
+    QTreeWidgetItem* item = new QTreeWidgetItem(QStringList() << action.key << message);
+    p_->ui.errors->addTopLevelItem(item);
+  }
+  
+  p_->tray->showMessage(tr("Error when sync file %1").arg(action.key), message, QSystemTrayIcon::Warning, 7000);
+  p_->tray->setProperty("file", action.key);
 }
 
 void main_window_t::action_progress(const action_t& action, qint64 progress, qint64 total)
@@ -473,76 +457,58 @@ void main_window_t::action_finished(const action_t& action)
     };    
 }
 
-void main_window_t::sync_started()
-{
-    set_state(syncing);
-}
-
-void main_window_t::sync_finished()
-{
-    set_state(complete);
-}
-
 void main_window_t::set_state(main_window_t::gui_state_e state)
 {
-    static gui_state_e last_state;
-    const bool is_error = p_->ui.status->property("error").toBool();
-    qDebug() << "is_error:" << is_error;
-    switch(state) {
-    case waiting: {
-        qDebug() << "waitings";
-        p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
-        p_->tray->setIcon(QIcon("icons:state-pause.png"));
-        break;
-    }
-    case disabled: {
-        qDebug() << "disabled";
-        if (is_error) {
-            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
-            p_->tray->setIcon(QIcon("icons:state-error.png"));
-        }
-        else {
-            p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
-            p_->tray->setIcon(QIcon("icons:state-offline.png"));
-        }
-//         p_->manager->stop();        
-        break;
-    }
-    case syncing: {
-        qDebug() << "syncing";
-        p_->ui.status->setProperty("error", false);        
-        p_->ui.status->setPixmap(QPixmap("icons:state-sync.png"));
-        p_->tray->setIcon(QIcon("icons:state-sync.png"));        
-        p_->sync_a->setEnabled(false);
-        break;
-    }
-    case complete: {
-        qDebug() << "complete";
-        if (is_error) {
-            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
-            p_->tray->setIcon(QIcon("icons:state-error.png"));
-        }
-        else {
-            p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
-            p_->tray->setIcon(QIcon("icons:state-ok.png"));
-        }
-        p_->sync_a->setEnabled(true);
-        
-        break;
-    }
-    case error: {
-        qDebug() << "error";
-        if (last_state != syncing) {
-            p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
-            p_->tray->setIcon(QIcon("icons:state-error.png"));
-        }
-        p_->ui.status->setProperty("error", true);
-        break;
-    }
+  p_->state = state;
+  
+  switch(p_->state) {
+  case waiting: {
+    p_->ui.status->setPixmap(QPixmap("icons:state-pause.png"));
+    p_->tray->setIcon(QIcon("icons:state-pause.png"));
+    break;
+  }
+  case disabled: {
+    p_->ui.status->setPixmap(QPixmap("icons:state-offline.png"));            
+    p_->tray->setIcon(QIcon("icons:state-offline.png"));
+    break;
+  }
+  case syncing: {
+    p_->ui.status->setPixmap(QPixmap("icons:state-sync.png"));
+    p_->tray->setIcon(QIcon("icons:state-sync.png"));        
+    p_->sync_a->setEnabled(false);
+    break;
+  }
+  case complete: {
+    p_->ui.status->setPixmap(QPixmap("icons:state-ok.png"));
+    p_->tray->setIcon(QIcon("icons:state-ok.png"));
+    p_->sync_a->setEnabled(true);
+    
+    break;
+  }
+  case error: {
+    p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
+    p_->tray->setIcon(QIcon("icons:state-error.png"));
+    break;
+  }
     default: Q_ASSERT(!"unhandled state");
-    }
-    last_state = state;
+  }
 }
+
+void main_window_t::log(const QString& message)
+{
+  p_->ui.log->insertRow(0);
+  p_->ui.log->setItem(0, 0, new QTableWidgetItem(message));  
+  p_->ui.log->setItem(0, 1, new QTableWidgetItem(QDateTime::currentDateTime().toString()));
+  p_->ui.log->resizeColumnToContents(0);
+}
+
+void main_window_t::log(const QString& message, const action_t& action)
+{
+  if (action.type != action_t::unchanged) {
+    log(message);
+  }
+}
+
 
 
 

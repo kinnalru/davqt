@@ -94,7 +94,15 @@ QFileInfoList storage_t::entries(QString folder) const
   QDir dir(prefix() + QDir::separator() + folder);
   if (!dir.exists()) throw qt_exception_t("Folder " + folder + " does not exists");
   
-  return dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
+  QFileInfoList result = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
+  result.erase(
+    std::remove_if( std::begin(result), std::end(result), [] (const QFileInfo& info) {
+      return info.fileName().endsWith(storage_t::tmpsuffix);
+    }),
+    std::end(result)
+  ); 
+  
+  return result;
 }
 
 

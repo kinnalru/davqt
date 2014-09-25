@@ -69,6 +69,7 @@ void updater_t::run()
 
   qDebug() << "Update thread finished";
   Q_EMIT finished();
+  qDebug() << "Update thread finished2";
 }
 
 void updater_t::stop()

@@ -55,49 +55,49 @@ struct upload_handler : base_handler_t {
 };
 
 struct download_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
-        Q_ASSERT(action.local.empty());  // local MUST not exists - sanity check
-        Q_ASSERT(!action.remote.empty());// remote contains stat do down load not "fixed"
-        if (QFileInfo(db->storage().absolute_file_path(action.key)).exists())
-            throw std::runtime_error("Can't download: file exists");
-    }
+  void do_check(session_t& session, database_p& db, const action_t& action) const {
+//     Q_ASSERT(action.local.empty());  // local MUST not exists - sanity check
+    Q_ASSERT(!action.remote.empty());// remote contains stat do down load not "fixed"
+//     if (QFileInfo(db->storage().absolute_file_path(action.key)).exists())
+//       throw std::runtime_error("Can't download: file exists");
+  }
+  
+  void do_request(session_t& session, database_p& db, const action_t& action) const {
+    qDebug() << Q_FUNC_INFO;
     
-    void do_request(session_t& session, database_p& db, const action_t& action) const {
-        qDebug() << Q_FUNC_INFO;
-        
-        const QString local_file = db->storage().absolute_file_path(action.key);
-        const QString remote_file = db->storage().remote_file_path(action.key);      
-        
-        const QString tmppath = local_file + storage_t::tmpsuffix;
-        
-        if (QFileInfo(tmppath).exists())
-            throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
-        
-        QFile tmpfile(tmppath);
-        if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-            throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
-        
-        stat_t remotestat =  session.get(remote_file, tmpfile.handle());
-        remotestat.perms = action.remote.perms;
+    const QString local_file = db->storage().absolute_file_path(action.key);
+    const QString remote_file = db->storage().remote_file_path(action.key);      
+    
+    const QString tmppath = local_file + storage_t::tmpsuffix;
+    
+    if (QFileInfo(tmppath).exists())
+      throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
+    
+    QFile tmpfile(tmppath);
+    if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
+      throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
+    
+    stat_t remotestat =  session.get(remote_file, tmpfile.handle());
+    remotestat.perms = action.remote.perms;
 
-        if (remotestat.perms) {
-            tmpfile.setPermissions(remotestat.perms);
-        }
-
-        if (remotestat.empty()) {
-            remotestat.merge(session.head(remote_file));
-        }
-
-        QFile::remove(local_file);
-        
-        if (!tmpfile.rename(local_file))
-            throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(local_file).arg(tmpfile.errorString()));   
-
-        const stat_t localstat(local_file);
-        
-        database::entry_t e = db->create(action.key, localstat, remotestat, false);
-        db->put(e.key, e);
+    if (remotestat.perms) {
+      tmpfile.setPermissions(remotestat.perms);
     }
+
+    if (remotestat.empty()) {
+      remotestat.merge(session.head(remote_file));
+    }
+
+    QFile::remove(local_file);
+    
+    if (!tmpfile.rename(local_file))
+      throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(local_file).arg(tmpfile.errorString()));   
+
+    const stat_t localstat(local_file);
+    
+    database::entry_t e = db->create(action.key, localstat, remotestat, false);
+    db->put(e.key, e);
+  }
 };
 
 struct forgot_handler : base_handler_t {
@@ -115,7 +115,7 @@ struct forgot_handler : base_handler_t {
 
 struct local_change_handler : upload_handler {
     void do_check(session_t& session, database_p& db, const action_t& action) const {
-        Q_ASSERT(!action.local.empty());  // local contais NEW "fixed" file stat to upload.
+//         Q_ASSERT(!action.local.empty());  // local contais NEW "fixed" file stat to upload.
         Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity check
     }
 
@@ -154,90 +154,92 @@ struct remote_change_handler : download_handler {
 };
 
 struct conflict_handler : base_handler_t {
-    action_processor_t::Resolver resolver_;
-    action_processor_t::Comparer comparer_;
-    
-    conflict_handler(action_processor_t::Comparer c, action_processor_t::Resolver r) : comparer_(c), resolver_(r) {}
+  action_processor_t::Resolver resolver_;
+  action_processor_t::Comparer comparer_;
+  
+  conflict_handler(action_processor_t::Comparer c, action_processor_t::Resolver r) : comparer_(c), resolver_(r) {}
 
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
-        Q_ASSERT(!action.local.empty());  // local MUST exists - sanity check
-        Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity check    
+  void do_check(session_t& session, database_p& db, const action_t& action) const {
+    Q_ASSERT(!action.local.empty());  // local MUST exists - sanity check
+    Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity check    
+  }
+  
+  void do_request(session_t& session, database_p& db, const action_t& action) const {
+    qDebug() << Q_FUNC_INFO;
+    
+    
+    const QString local_file = db->storage().absolute_file_path(action.key);
+    const QString remote_file = db->storage().remote_file_path(action.key);      
+
+    Q_ASSERT(!QFileInfo(local_file).isDir());
+    
+    const QString tmppath = local_file + storage_t::tmpsuffix;
+      
+    QFile tmpfile(tmppath);
+    if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
+      throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
+
+    stat_t remotestat =  session.get(remote_file, tmpfile.handle());
+    remotestat.perms = action.remote.perms;
+
+    if (remotestat.perms) {
+      tmpfile.setPermissions(remotestat.perms);
     }
     
-    void do_request(session_t& session, database_p& db, const action_t& action) const {
-        
-//         const QString tmppath = action.local_file + database::database_t::tmpprefix;
-//         
-//         QFile tmpfile(tmppath);
-//         if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-//             throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
-// 
-//         stat_t remotestat =  session.get(action.remote_file, tmpfile.handle());
-//         remotestat.perms = action.remote.perms;
-// 
-//         if (remotestat.perms) {
-//             tmpfile.setPermissions(remotestat.perms);
-//         }
-//         
-//         if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
-//             session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
-//         }
-// 
-//         action_processor_t::resolve_ctx ctx = {
-//             action,
-//             action.local_file,
-//             tmppath,
-//             ""
-//         };
-//         
-//         if (comparer_(ctx)) {
-//             QFile::remove(tmppath); 
-//             
-//             const stat_t localstat(action.local_file);
-//             remotestat = session.set_permissions(action.remote_file, localstat.perms, db.get_entry(action.local_file).remote.etag);
-//             remotestat.perms = localstat.perms;
-//             
-//             if (remotestat.etag.isEmpty() || remotestat.mtime == 0 || remotestat.size == -1) {
-//                 session.head(action.remote_file, remotestat.etag, remotestat.mtime, remotestat.size);
-//             }
-//             
-//             db_entry_t e = db.get_entry(localstat.absolutepath);
-//             e.local = localstat;
-//             e.remote = remotestat;
-//             e.dir = false;        
-//             db.save(e.folder + "/" + e.name, e);                     
-//         } 
-//         else {
-//             if (resolver_(ctx)) {
-//                 QFile::remove(tmppath); 
-//                 QFile::remove(action.local_file);
-//                 
-//                 if (!QFile::rename(ctx.result, action.local_file))
-//                     throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result).arg(action.local_file));                       
-// 
-//                 QFile::setPermissions(action.local_file, action.local.perms);                
-//                 const stat_t localstat(action.local_file);
-// 
-//                 db_entry_t e = db.get_entry(localstat.absolutepath);
-//                 e.local = localstat;
-//                 e.remote = action.remote;
-//                 e.dir = false;        
-//                 e.bad = true;
-//                 db.save(e.folder + "/" + e.name, e);  
-//                 
-//                 const action_t act(action_t::local_changed,
-//                     action.local_file,
-//                     action.remote_file,
-//                     localstat,
-//                     action.remote);
-//                 
-//                 local_change_handler()(session, db, act);
-//             }
-//             else {
-//                 qDebug() << "Can't resolve conflict!";
-//             }
-//         }
+    if (remotestat.empty()) {
+      remotestat.merge(session.head(remote_file));
     }
+    
+    action_processor_t::resolve_ctx ctx = {
+      action,
+      local_file,
+      tmppath,
+      ""
+    };
+    
+    if (comparer_(ctx)) {
+      //File contents is same
+      QFile::remove(tmppath); 
+      
+      const stat_t localstat(local_file);
+      remotestat.merge(session.set_permissions(remote_file, localstat.perms));
+      remotestat.perms = localstat.perms;
+      
+      if (remotestat.empty()) {
+        remotestat.merge(session.head(remote_file));
+      }
+      
+      database::entry_t e = db->create(action.key, localstat, remotestat, false);
+      db->put(e.key, e);
+    } 
+    else {
+      //File contents differs
+      if (resolver_(ctx)) {
+        //Files merged
+        QFile::remove(tmppath); 
+        QFile::remove(local_file);
+        
+        if (!QFile::rename(ctx.result, local_file))
+          throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result).arg(local_file));                       
+
+        QFile::setPermissions(local_file, action.local.perms);                
+        const stat_t localstat(local_file);
+
+        database::entry_t e = db->create(action.key, localstat, remotestat, false);
+        db->put(e.key, e);
+        
+        const action_t act(action_t::local_changed,
+          action.key,
+          localstat,
+          remotestat);
+        
+        local_change_handler()(session, db, act);
+      }
+      else {
+        qDebug() << "Can't resolve conflict!";
+      }
+    }
+  }
 };
 
 struct remove_local_handler : base_handler_t {
@@ -408,6 +410,7 @@ action_processor_t::action_processor_t(session_t& session, database_p db, action
         {action_t::upload_dir, upload_dir_handler()},
         {action_t::download_dir, download_dir_handler()},
         {action_t::unchanged, [] (session_t& session, database_p db, const action_t& action) {}},
+        {action_t::conflict, conflict_handler(comparer, resolver)},
 //         {action_t::error, [] (session_t& session, database::database_t& db, const action_t& action) {
 //             throw qt_exception_t(QObject::tr("Action precondition failed"));
 //         }}

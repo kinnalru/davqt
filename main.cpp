@@ -6,6 +6,7 @@
 #include <neon/ne_socket.h>
 
 #include <QApplication>
+#include <QDesktopServices>
 #include <QTextCodec>
 
 #include "settings/settings.h"
@@ -20,17 +21,15 @@ int main(int argc, char** argv)
             throw std::runtime_error("Can't init libneon");
 
         QApplication app(argc, argv);
+        app.setOrganizationName("gkb");
+        app.setApplicationName("davqt");
    
         QTextCodec::setCodecForTr(QTextCodec::codecForName("utf8"));
 
         QDir::addSearchPath("icons", QString(":icons/images/"));
         QDir::addSearchPath("images", QString(":icons/images/"));
 
-        const QString path = settings().remotefolder();
-        storage_t storage("/tmp/davroot/files", path);
-        database_p db(new database::fs_t(storage, "/tmp/davroot/db"));
-        
-        main_window_t m(db);
+        main_window_t m;
         m.show();
         
         return app.exec();

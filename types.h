@@ -51,7 +51,13 @@ struct stat_t {
         : mtime(0), size(-1), perms(0) {}
     
     stat_t(const local_res_t& info)
-        : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
+      : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {
+      if (!info.exists()) {
+        mtime = 0;
+        perms = 0;
+        size = -1;
+      }
+    }
         
     stat_t(const remote_res_t& info)
         : mtime(info.mtime), perms(info.perms), size(info.size) {}
@@ -177,14 +183,7 @@ inline QDebug operator<<(QDebug dbg, const stat_t &s)
 
 inline QDebug operator<<(QDebug dbg, const QFile::Permissions &perms)
 {
-    dbg.nospace() << "#Permissions(";
-        QMetaEnum e = QFile::staticMetaObject.enumerator(QFile::staticMetaObject.indexOfEnumerator("Permission"));
-        for (int i = 0; i< e.keyCount(); ++i) {
-            if (perms & e.value(i)) {
-                dbg.nospace() << e.key(i);
-            }
-        }
-    dbg.nospace() << ")";
+    dbg.nospace() << "#Permissions(" << static_cast<int>(perms) << ")";
 
     return dbg.space();
 }

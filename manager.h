@@ -25,20 +25,6 @@ public:
   
   bool busy() const;
   
-//   enum status_e {
-//     free      = 1 << 1,
-//     updating  = 1 << 2,
-//     syncing   = 1 << 3,
-//     stopping  = 1 << 4,
-//     
-//     busy_upd  = updating | stopping,
-//     busy_sync = syncing  | stopping,
-//     
-//     busy      = busy_upd | busy_sync,
-//   };
-//   
-//   status_e status() const;
-  
 public Q_SLOTS:
   void start();  /// start updating and sync process
   void stop();   /// stop any activity

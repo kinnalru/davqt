@@ -1,5 +1,6 @@
 
 #include <QWaitCondition>
+#include <QProcess>
 
 #include "handlers.h"
 #include "tools.h"
@@ -61,15 +62,14 @@ void syncer_t::run()
     Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
     Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
     
-    action_processor_t processor(session, p_->db);
-    //     action_processor_t processor(session, p_->db,
-    //         [] (action_processor_t::resolve_ctx& ctx) {
-    //             return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
-    //         },
-    //         [] (action_processor_t::resolve_ctx& ctx) {
-    //             ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
-    //             return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
-    //         });
+    action_processor_t processor(session, p_->db,
+        [] (action_processor_t::resolve_ctx& ctx) {
+            return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+        },
+        [] (action_processor_t::resolve_ctx& ctx) {
+            ctx.result = ctx.local_old + ".merged" + storage_t::tmpsuffix;
+            return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+        });
     
     Q_FOREVER {
       action_t current;
@@ -114,12 +114,16 @@ void syncer_t::run()
 
   qDebug() << "Sync thread finished";
   Q_EMIT finished();
+  qDebug() << "Sync thread finished2";
 }
 
 void syncer_t::stop()
 {
   p_->stop = true;
+  qDebug() << "ss0";
   Q_EMIT stopping();
+  qDebug() << "ss1";
+  p_->available.wakeAll();
 }
 
 void syncer_t::new_actions_available()

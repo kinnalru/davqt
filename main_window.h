@@ -33,7 +33,7 @@ class main_window_t : public QWidget
 {
     Q_OBJECT
 public:
-    main_window_t(database_p db);
+    main_window_t();
     virtual ~main_window_t();
     
     void restart();
@@ -42,11 +42,8 @@ public Q_SLOTS:
     void sync();
     
     void status_updated(const Actions& actions);
-    void status_error(const QString& error);
+    void set_error(const QString& error);
 
-    void sync_started();
-    void sync_finished();
-    
     void action_started(const action_t& action);
     void action_progress(const action_t& action, qint64 progress, qint64 total);        
     void action_success(const action_t& action);
@@ -57,7 +54,6 @@ public Q_SLOTS:
 private:
     void action_finished(const action_t& action);
     Q_SLOT void force_sync();
-    Q_SLOT void start_sync();
     
     enum gui_state_e {
         disabled,
@@ -68,6 +64,8 @@ private:
     };
     
     void set_state(gui_state_e state);
+    void log(const QString& message);
+    void log(const QString& message, const action_t& action);
     
 private:
     struct Pimpl;

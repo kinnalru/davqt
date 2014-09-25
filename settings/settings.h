@@ -2,10 +2,12 @@
 
 #include <memory>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QSettings>
 #include <QObject>
 #include <QDebug>
 #include <QDateTime>
+#include <QDir>
 
 #define GENERATE_PARAM(name, type, def) \
     type name() const {\
@@ -43,9 +45,14 @@ public:
     GENERATE_PARAM(host, QString, QString());
     GENERATE_PARAM(interval, int, 0);
     GENERATE_PARAM(remotefolder, QString, "/");
-    GENERATE_PARAM(localfolder, QString, ".davqtfolder");
+    GENERATE_PARAM(localfolder, QString, settings_impl_t::data_path());
     GENERATE_PARAM(enabled, bool, false);
     GENERATE_PARAM(last_sync, QDateTime, QDateTime());
+    
+    static QString data_path() {
+      const QString apppath = QDesktopServices::storageLocation(QDesktopServices::DataLocation);
+      return QDir::cleanPath(apppath + QDir::separator() + "files");      
+    }
     
 Q_SIGNALS:
     void username_changed(const QString&);

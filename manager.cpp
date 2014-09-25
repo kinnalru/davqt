@@ -48,7 +48,7 @@ manager_t::~manager_t()
 
 bool manager_t::busy() const
 {
-  return p_->active_updaters && p_->active_syncers;
+  return p_->active_updaters || p_->active_syncers;
 }
 
 void manager_t::start()
@@ -66,17 +66,18 @@ void manager_t::start_update()
   Q_VERIFY(::connect(updater, SIGNAL(started()), [this] {
     p_->active_updaters++;
     start_sync();
-  }, Qt::BlockingQueuedConnection));
+  }, Qt::QueuedConnection));
   
   Q_VERIFY(connect(updater, SIGNAL(new_actions(Actions)), SLOT(receive_new_actions(Actions))));
+  Q_VERIFY(connect(updater, SIGNAL(error(QString)),       SLOT(stop()), Qt::QueuedConnection));
   Q_VERIFY(connect(updater, SIGNAL(error(QString)),       SIGNAL(error(QString))));
   
   Q_VERIFY(::connect(updater, SIGNAL(finished()), [this] {
     p_->active_updaters--;
     if (p_->active_updaters == 0)  Q_EMIT can_finish();
-  }, Qt::BlockingQueuedConnection));
+  }, Qt::QueuedConnection));
   
-  Q_VERIFY(connect(this, SIGNAL(need_stop()), updater,    SLOT(stop())));
+  Q_VERIFY(connect(this, SIGNAL(need_stop()), updater,    SLOT(stop()), Qt::DirectConnection));
   
   QThreadPool::globalInstance()->start(updater);
 }
@@ -98,22 +99,23 @@ void manager_t::start_sync()
     
     Q_VERIFY(::connect(syncer, SIGNAL(started()), [this] {
       p_->active_syncers++;
-    }, Qt::BlockingQueuedConnection));
+    }, Qt::QueuedConnection));
     
     Q_VERIFY(connect(syncer, SIGNAL(action_started(action_t)),        SIGNAL(action_started(action_t))));
     Q_VERIFY(connect(syncer, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
     Q_VERIFY(connect(syncer, SIGNAL(action_success(action_t)),        SIGNAL(action_success(action_t))));
     Q_VERIFY(connect(syncer, SIGNAL(action_error(action_t,QString)),  SIGNAL(action_error(action_t,QString))));
+    Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SLOT(stop()), Qt::QueuedConnection));
     Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SIGNAL(error(QString))));
     
     Q_VERIFY(::connect(syncer, SIGNAL(finished()), [this] {
       p_->active_syncers--;
       if (p_->active_syncers == 0) Q_EMIT finished();
-    }, Qt::BlockingQueuedConnection));
+    }, Qt::QueuedConnection));
     
     Q_VERIFY(connect(this, SIGNAL(new_actions(Actions)), syncer,      SLOT(new_actions_available())));
-    Q_VERIFY(connect(this, SIGNAL(need_stop()), syncer,               SLOT(stop())));
-    Q_VERIFY(connect(this, SIGNAL(can_finish()), syncer,              SLOT(can_finish())));
+    Q_VERIFY(connect(this, SIGNAL(need_stop()), syncer,               SLOT(stop()), Qt::DirectConnection));
+    Q_VERIFY(connect(this, SIGNAL(can_finish()), syncer,              SLOT(can_finish()), Qt::QueuedConnection));
     
     QThreadPool::globalInstance()->start(syncer);
   }
@@ -121,8 +123,12 @@ void manager_t::start_sync()
 
 void manager_t::stop()
 {
+  qDebug() << "s1";
   Q_EMIT need_stop();
+  qDebug() << "s2";
+  QThreadPool::globalInstance()->setExpiryTimeout(1000);
   QThreadPool::globalInstance()->waitForDone();
+  qDebug() << "s3";
 }
 
 
