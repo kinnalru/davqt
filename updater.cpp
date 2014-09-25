@@ -218,6 +218,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
 
         debug() << "- files -";
         blank_actions << process(db_files, local_files, remote_files, session);
+        debug() << "F:" << blank_actions;
     }
     
     
@@ -251,6 +252,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
       
       debug() << "- dirs -";
       blank_actions << process(db_dirs, local_dirs, remote_dirs, session, lf);
+      debug() << "FD:" << blank_actions;
     }
     
 
@@ -263,6 +265,8 @@ Actions updater_t::update(session_t& session, const QString& folder)
 Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder)
 {
   if (p_->stop) throw stop_exception_t();  
+  
+  debug() << Q_FUNC_INFO << "Fodler:" << folder;
   
   const snapshot_data snap(db, local, remote);
   Actions blank_actions;
@@ -319,7 +323,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
   Q_FOREACH(const auto entry, snap.to_forgot) {
     blank_actions << action_t(
       action_t::forgot,
-      p_->db->key(folder + "/" + entry),
+      p_->db->key(entry),
       stat_t(), stat_t()
     );
   }
@@ -327,7 +331,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
   Q_FOREACH(const auto entry, snap.to_remove_local) {
     blank_actions << action_t(
       action_t::remove_local,
-      p_->db->key(folder + "/" + entry),
+      p_->db->key(entry),
       stat_t(), stat_t()
     );
   }
@@ -335,7 +339,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
   Q_FOREACH(const auto entry, snap.to_remove_remote) {
     blank_actions << action_t(
       action_t::remove_remote,
-      p_->db->key(folder + "/" + entry),
+      p_->db->key(entry),
       stat_t(), stat_t()
     );
   }
@@ -385,7 +389,7 @@ action_t::type_e updater_t::compare(const action_t& action) const {
   const stat_t rstat = action.remote;
   const stat_t dlstat = db_entry.local;
   const stat_t drstat = db_entry.remote;
-  
+   
   action_t::TypeMask mask = 0;
   
   if (dlstat.mtime != lstat.mtime) {

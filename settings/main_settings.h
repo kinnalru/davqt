@@ -19,7 +19,6 @@
 
 #ifndef DAVQT_MAIN_SETTINGS_H
 #define DAVQT_MAIN_SETTINGS_H
-
 #include <memory>
 
 #include "3rdparty/preferences/src/preferences_widget.h"

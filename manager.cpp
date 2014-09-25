@@ -84,7 +84,7 @@ void manager_t::start_update()
 
 void manager_t::receive_new_actions(const Actions& actions)
 {
-  Q_ASSERT(p_->active_updaters);
+  Q_ASSERT(busy());
   Q_EMIT new_actions(actions);  
   p_->actions << actions;
 }
@@ -100,7 +100,8 @@ void manager_t::start_sync()
     Q_VERIFY(::connect(syncer, SIGNAL(started()), [this] {
       p_->active_syncers++;
     }, Qt::BlockingQueuedConnection));
-    
+
+    Q_VERIFY(connect(syncer, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
     Q_VERIFY(connect(syncer, SIGNAL(action_started(action_t)),        SIGNAL(action_started(action_t))));
     Q_VERIFY(connect(syncer, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
     Q_VERIFY(connect(syncer, SIGNAL(action_success(action_t)),        SIGNAL(action_success(action_t))));

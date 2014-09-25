@@ -49,6 +49,9 @@ public:
     GENERATE_PARAM(enabled, bool, false);
     GENERATE_PARAM(last_sync, QDateTime, QDateTime());
     
+    GENERATE_PARAM(compare, QString, "diff");
+    GENERATE_PARAM(merge, QString, "kdiff3");
+    
     static QString data_path() {
       const QString apppath = QDesktopServices::storageLocation(QDesktopServices::DataLocation);
       return QDir::cleanPath(apppath + QDir::separator() + "files");      
@@ -63,6 +66,8 @@ Q_SIGNALS:
     void localfolder_changed(const QString&);
     void enabled_changed(bool);
     void last_sync_changed(QDateTime);
+    void compare_changed(const QString&);
+    void merge_changed(const QString&);
     
 protected:
     std::unique_ptr<QSettings> s_;

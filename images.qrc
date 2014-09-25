@@ -2,6 +2,7 @@
   <qresource prefix="/icons">
     <file>images/exit.png</file>
     <file>images/sync.png</file>
+    <file>images/merge.png</file>
     <file>images/prefs.png</file>
     <file>images/folder-remote.png</file>
 	<file>images/state-error.png</file>

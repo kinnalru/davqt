@@ -30,6 +30,8 @@
 #include "3rdparty/preferences/src/preferences_dialog.h"
 
 #include "settings/main_settings.h"
+#include "settings/sync_settings.h"
+#include "settings/merge_settings.h"
 #include "settings/settings.h"
 
 #include "database/fs/fs.h"
@@ -95,13 +97,16 @@ main_window_t::main_window_t()
     verticalHeader->setDefaultSectionSize(16);
     
     
+    
     ::connect(p_->settings_a, SIGNAL(triggered(bool)), [this] {
         preferences_dialog d(preferences_dialog::Auto, true, this);
         d.setWindowTitle(p_->settings_a->text());
         d.setWindowIcon(p_->settings_a->icon());
         d.add_item(new main_settings_t());
+        d.add_item(new sync_settings_t());
+        d.add_item(new merge_settings_t());
         d.exec();
-        
+       
         if (p_->manager->busy()) {
             QMessageBox mb(QMessageBox::Warning, tr("Warning"), tr("Sync in progress. Do you want to wait untill finished?"),
                 QMessageBox::Yes | QMessageBox::No
@@ -177,7 +182,8 @@ void main_window_t::restart()
   p_->enabled_a->setCheckable(true);
   p_->enabled_a->setChecked(settings().enabled());  
 
-  const QUrl url(settings().host());
+  QUrl url(settings().host());
+  url.setPath(settings().remotefolder());
   
   p_->ui.remotefolder->setText(url.toString());
   p_->ui.localfolder->setText(settings().localfolder());
@@ -204,6 +210,7 @@ void main_window_t::restart()
     settings().set_last_sync(QDateTime::currentDateTime());
     
     if (p_->state != error) {
+      p_->db->set_initialized(true);
       set_state(complete);
     }
   }));
@@ -491,6 +498,7 @@ void main_window_t::set_state(main_window_t::gui_state_e state)
   case error: {
     p_->ui.status->setPixmap(QPixmap("icons:state-error.png"));            
     p_->tray->setIcon(QIcon("icons:state-error.png"));
+    p_->sync_a->setEnabled(true);
     break;
   }
     default: Q_ASSERT(!"unhandled state");

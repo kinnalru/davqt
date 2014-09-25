@@ -31,13 +31,12 @@ struct main_settings_t::Pimpl
 };
 
 main_settings_t::main_settings_t(QWidget* parent)
-    : preferences_widget(parent, tr("Main settings"))
+    : preferences_widget(parent, tr("Main"))
     , p_(new Pimpl)
     , lock_change_(false)
 {
-    set_icon(QIcon("icons:configure.png"));
+    set_icon(QIcon("icons:settings.png"));
     set_header(tr("Main settings"));
-
     
     p_->ui.setupUi(this);
     Q_VERIFY(connect(p_->ui.host, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
@@ -45,8 +44,6 @@ main_settings_t::main_settings_t(QWidget* parent)
     Q_VERIFY(connect(p_->ui.localfolder, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.username, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.password, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
-    Q_VERIFY(connect(p_->ui.interval, SIGNAL(valueChanged(int)), this, SLOT(int_changed())));
-    Q_VERIFY(connect(p_->ui.enabled, SIGNAL(clicked(bool)), this, SLOT(int_changed())));
 }
 
 main_settings_t::~main_settings_t()
@@ -64,8 +61,6 @@ void main_settings_t::update_preferences()
     p_->ui.localfolder->setText(s.localfolder());
     p_->ui.username->setText(s.username());
     p_->ui.password->setText(s.password());
-    p_->ui.interval->setValue(s.interval());
-    p_->ui.enabled->setChecked(s.enabled());
     lock_change_ = false;
 }
 
@@ -84,8 +79,6 @@ void main_settings_t::accept()
     s.set_localfolder(p_->ui.localfolder->text());
     s.set_username(p_->ui.username->text());
     s.set_password(p_->ui.password->text());
-    s.set_interval(p_->ui.interval->value());
-    s.set_enabled(p_->ui.enabled->isChecked());
 }
 
 void main_settings_t::reject()
@@ -100,7 +93,6 @@ void main_settings_t::reset_defaults()
     settings().reset_localfolder();
     settings().reset_username();
     settings().reset_password();
-    settings().reset_interval();
     update_preferences();
 }
 

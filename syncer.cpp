@@ -71,6 +71,8 @@ void syncer_t::run()
             return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
         });
     
+    Q_VERIFY(connect(&processor, SIGNAL(new_actions(Actions)), this, SIGNAL(new_actions(Actions))));
+    
     Q_FOREVER {
       action_t current;
       if (!QMetaObject::invokeMethod(&p_->manager, "next_sync_action", Qt::BlockingQueuedConnection, Q_RETURN_ARG(action_t, current))) {

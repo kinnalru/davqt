@@ -35,22 +35,24 @@ set(HEADERS
     database/db.h
     database/entry.h
     database/fs/fs.h
-    handlers.h
     storage.h
 
 )
 
 set(MOC
+    handlers.h
     main_window.h
+    manager.h
     session.h
     settings/main_settings.h
+    settings/merge_settings.h
     settings/settings.h
+    settings/sync_settings.h
     sync.h    
-    tools.h
-    updater.h
     syncer.h
+    tools.h
     types.h
-    manager.h
+    updater.h
 )
 
 set(SOURCES 
@@ -60,18 +62,22 @@ set(SOURCES
     handlers.cpp
     main.cpp
     main_window.cpp
+    manager.cpp
     session.cpp
     settings/main_settings.cpp
+    settings/merge_settings.cpp
+    settings/sync_settings.cpp
     storage.cpp
     sync.cpp
-    updater.cpp
     syncer.cpp
-    manager.cpp
+    updater.cpp
 )
 
 set(IFACES
     main_window.ui
     settings/main_settings.ui
+    settings/merge_settings.ui
+    settings/sync_settings.ui
 )
 
 set(RESOURCES

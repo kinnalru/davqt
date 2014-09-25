@@ -24,6 +24,7 @@ public Q_SLOTS:
   void can_finish();
     
 Q_SIGNALS:
+  void new_actions(const Actions& actions);
   void action_started(const action_t& action);
   void progress(const action_t& action, qint64 progress, qint64 total);  
   void action_success(const action_t& action);
