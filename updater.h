@@ -5,8 +5,10 @@
 #include <QObject>
 #include <QRunnable>
 
+#include "3rdparty/webdav/qtwebdav/webdav.h"
+
 #include "manager.h"
-#include "session.h"
+
 
 class updater_t : public QObject, public QRunnable {
   Q_OBJECT
@@ -30,8 +32,8 @@ Q_SIGNALS:
   void stopping();
     
 private:
-  Actions update(session_t& session, const QString& folder);
-  Actions process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder = QString());
+  Actions update(QWebdav& webdav, const QString& folder);
+  Actions process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, QWebdav& webdav, QString folder = QString());
   Actions fill(Actions actions) const;
   
   action_t::type_e compare(const action_t& action) const;

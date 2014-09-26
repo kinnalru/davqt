@@ -6,6 +6,8 @@
 #include "tools.h"
 #include "syncer.h"
 
+#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
+
 struct stop_exception_t : public std::runtime_error {
   stop_exception_t() : std::runtime_error("stop") {}
 };
@@ -44,25 +46,25 @@ void syncer_t::run()
   Q_EMIT started();
   try {
     
-    session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+    QWebdav webdav(p_->conn.url);
               
     if (p_->stop) throw stop_exception_t();
     
-    Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
-    
-    session.set_auth(p_->conn.login, p_->conn.password);
-    session.set_ssl();
-    session.open();
+//     Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
+//     
+//     session.set_auth(p_->conn.login, p_->conn.password);
+//     session.set_ssl();
+//     session.open();
     
     if (p_->stop) throw stop_exception_t();
     
     progress_adapter_t adapter;
 
-    Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-    Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-    Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
+//     Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+//     Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+//     Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
     
-    action_processor_t processor(session, p_->db,
+    action_processor_t processor(webdav, p_->db,
         [] (action_processor_t::resolve_ctx& ctx) {
             return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
         },

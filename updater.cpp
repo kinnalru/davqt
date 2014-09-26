@@ -18,7 +18,7 @@ struct updater_t::Pimpl {
     bool stop;
     QStringList folders;
     
-    std::map<QString, remote_res_t>      remote_cache;
+    std::map<QString, QWebdavUrlInfo>    remote_cache;
     std::map<QString, QFileInfo>         local_cache;
     std::map<QString, database::entry_t> db_cache;
 };
@@ -41,15 +41,15 @@ void updater_t::run()
   debug() << "Update thread started";
   Q_EMIT started();
   try {
-    session_t session(0, p_->conn.schema, p_->conn.host, p_->conn.port);
+    QWebdav webdav(p_->conn.url);
   
     if (p_->stop) throw stop_exception_t();
     
-    Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
+//     Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
     
-    session.set_auth(p_->conn.login, p_->conn.password);
-    session.set_ssl();
-    session.open();
+//     session.set_auth(p_->conn.login, p_->conn.password);
+//     session.set_ssl();
+//     session.open();
     
     p_->remote_cache.clear();
     p_->local_cache.clear();
@@ -60,7 +60,7 @@ void updater_t::run()
     while(!p_->folders.isEmpty()) {
       const QString current_folder = p_->folders.takeFirst();
       
-      const Actions actions = fill(update(session, current_folder));
+      const Actions actions = fill(update(webdav, current_folder));
       if (p_->stop) throw stop_exception_t();
       Q_EMIT new_actions(actions);
     }
@@ -147,20 +147,22 @@ struct snapshot_data {
   Files to_remove_remote;
 };
 
-Actions updater_t::update(session_t& session, const QString& folder)
+#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
+
+Actions updater_t::update(QWebdav& webdav, const QString& folder)
 {
     if (p_->stop) throw stop_exception_t();
     
     const QString lf = p_->db->key(folder);
     debug() << Q_FUNC_INFO << "Local:" << lf << " Remote:" << folder;
     
-    const auto remotes = session.get_resources(folder);
+    const auto remotes = webdav.parse(webdav.list(folder));
     const auto remote_storage = std::accumulate(remotes.begin(), remotes.end(),
-      std::map<QString, remote_res_t>(),
-      [&] (std::map<QString, remote_res_t>& result, const remote_res_t& resource) {
-        
-        if (resource.name != ".") {
-          result[p_->db->key(resource.path)] = resource;
+      std::map<QString, QWebdavUrlInfo>(),
+      [&] (std::map<QString, QWebdavUrlInfo>& result, const QWebdavUrlInfo& resource) {
+        qDebug() << "resource name: " << resource.name();
+        if (resource.name() != ".") {
+          result[p_->db->key(resource.name())] = resource;
         }
 
         return result;
@@ -189,8 +191,8 @@ Actions updater_t::update(session_t& session, const QString& folder)
     {
         const auto remote_files = std::accumulate(remote_storage.begin(), remote_storage.end(),
             QSet<QString>(),
-            [&] (QSet<QString>& result, const std::map<QString, remote_res_t>::value_type& pair) {
-            if (!pair.second.dir) {
+            [&] (QSet<QString>& result, const std::map<QString, QWebdavUrlInfo>::value_type& pair) {
+            if (!pair.second.isDir()) {
                 result << pair.first;
             }
             return result;
@@ -217,7 +219,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
 
 
         debug() << "- files -";
-        blank_actions << process(db_files, local_files, remote_files, session);
+        blank_actions << process(db_files, local_files, remote_files, webdav);
         debug() << "F:" << blank_actions;
     }
     
@@ -225,8 +227,8 @@ Actions updater_t::update(session_t& session, const QString& folder)
     {
       const auto remote_dirs = std::accumulate(remote_storage.begin(), remote_storage.end(),
         QSet<QString>(),
-        [&] (QSet<QString>& result, const std::map<QString, remote_res_t>::value_type& pair) {
-          if (!pair.first.isEmpty() && pair.second.dir) {
+        [&] (QSet<QString>& result, const std::map<QString, QWebdavUrlInfo>::value_type& pair) {
+          if (!pair.first.isEmpty() && pair.second.isDir()) {
             result << pair.first;
           }
           return result;
@@ -251,7 +253,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
         });
       
       debug() << "- dirs -";
-      blank_actions << process(db_dirs, local_dirs, remote_dirs, session, lf);
+      blank_actions << process(db_dirs, local_dirs, remote_dirs, webdav, lf);
       debug() << "FD:" << blank_actions;
     }
     
@@ -262,7 +264,7 @@ Actions updater_t::update(session_t& session, const QString& folder)
     return blank_actions;
 }
 
-Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, session_t& s, QString folder)
+Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> remote, QWebdav& webdav, QString folder)
 {
   if (p_->stop) throw stop_exception_t();  
   

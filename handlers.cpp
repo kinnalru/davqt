@@ -16,21 +16,21 @@ namespace {
 }
 
 struct upload_handler : base_handler_t {
-  void do_check(session_t& session, database_p& db, const action_t& action) const {
+  void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
     Q_ASSERT(!action.local.empty()); // local contais NEW "fixed" file stat to upload.
     Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity check
     
-    try {
-      auto resources = session.get_resources(action.key);
-    }
-    catch (ne_exception_t& e) {
-      if (e.code() == 404) return;
-    }
-    
-    throw std::runtime_error("Can't upload: file exists on server");
+//     try {
+//       auto resources = webdav.list(action.key);
+//     }
+//     catch (ne_exception_t& e) {
+//       if (e.code() == 404) return;
+//     }
+//     
+//     throw std::runtime_error("Can't upload: file exists on server");
   }
   
-  Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+  Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
     qDebug() << Q_FUNC_INFO;
     
     const QString local_file = db->storage().absolute_file_path(action.key);
@@ -41,12 +41,15 @@ struct upload_handler : base_handler_t {
     if (!file.open(QIODevice::ReadOnly)) 
       throw qt_exception_t(QString("Can't open file %1: %2").arg(action.key).arg(file.errorString()));
     
-    stat_t remotestat = session.put(remote_file, file.handle());
-    remotestat.merge(session.set_permissions(remote_file, action.local.perms));
+    stat_t remotestat;
+    webdav.put(remote_file, &file);
+//     remotestat.merge(
+    webdav.setPermissions(remote_file, action.local.perms);
+//     );
     remotestat.perms = action.local.perms;
 
     if (remotestat.empty()) {
-        remotestat.merge(session.head(remote_file));
+        remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
     }
     
     database::entry_t e = db->create(action.key, action.local, remotestat, false);
@@ -56,14 +59,14 @@ struct upload_handler : base_handler_t {
 };
 
 struct download_handler : base_handler_t {
-  void do_check(session_t& session, database_p& db, const action_t& action) const {
+  void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
 //     Q_ASSERT(action.local.empty());  // local MUST not exists - sanity check
     Q_ASSERT(!action.remote.empty());// remote contains stat do down load not "fixed"
 //     if (QFileInfo(db->storage().absolute_file_path(action.key)).exists())
 //       throw std::runtime_error("Can't download: file exists");
   }
   
-  Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+  Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
     qDebug() << Q_FUNC_INFO;
     
     const QString local_file = db->storage().absolute_file_path(action.key);
@@ -78,7 +81,8 @@ struct download_handler : base_handler_t {
     if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
       throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
     
-    stat_t remotestat =  session.get(remote_file, tmpfile.handle());
+    stat_t remotestat;
+    webdav.get(remote_file, &tmpfile);
     remotestat.perms = action.remote.perms;
 
     if (remotestat.perms) {
@@ -86,7 +90,7 @@ struct download_handler : base_handler_t {
     }
 
     if (remotestat.empty()) {
-      remotestat.merge(session.head(remote_file));
+      remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
     }
 
     QFile::remove(local_file);
@@ -104,12 +108,12 @@ struct download_handler : base_handler_t {
 };
 
 struct forgot_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(action.local.empty()); // local MUST not exists - sanity check
         Q_ASSERT(action.remote.empty());// remote MUST not exists - sanity check
     }
     
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO;
         
         db->remove(action.key);
@@ -118,12 +122,12 @@ struct forgot_handler : base_handler_t {
 };
 
 struct local_change_handler : upload_handler {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
 //         Q_ASSERT(!action.local.empty());  // local contais NEW "fixed" file stat to upload.
         Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity check
     }
 
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO;
         
         database::entry_t e = db->get(action.key);
@@ -134,25 +138,26 @@ struct local_change_handler : upload_handler {
             const QString local_file = db->storage().absolute_file_path(action.key);
             const QString remote_file = db->storage().remote_file_path(action.key);      
             
-            stat_t remotestat = session.set_permissions(remote_file, action.local.perms);
+            stat_t remotestat;
+            webdav.setPermissions(remote_file, action.local.perms);
             remotestat.perms = action.local.perms;
 
             if (remotestat.empty()) {
-                remotestat.merge(session.head(remote_file));
+              remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
             }
 
             database::entry_t e = db->create(action.key, action.local, remotestat, false);
             db->put(e.key, e);
         }
         else {
-            upload_handler::do_request(session, db, action);
+            upload_handler::do_request(webdav, db, action);
         }
         return Actions();
     }
 };
 
 struct remote_change_handler : download_handler {
-    void do_check(session_t& session, const action_t& action) const {
+    void do_check(QWebdav& webdav, const action_t& action) const {
         Q_ASSERT(!action.local.empty()); // local MUST exists - sanity check
         Q_ASSERT(!action.remote.empty());// remote MUST exists - sanity check        
     }
@@ -164,12 +169,12 @@ struct conflict_handler : base_handler_t {
   
   conflict_handler(action_processor_t::Comparer c, action_processor_t::Resolver r) : comparer_(c), resolver_(r) {}
 
-  void do_check(session_t& session, database_p& db, const action_t& action) const {
+  void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
     Q_ASSERT(!action.local.empty());  // local MUST exists - sanity check
     Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity check    
   }
   
-  Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+  Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
     qDebug() << Q_FUNC_INFO;
     
     
@@ -184,7 +189,8 @@ struct conflict_handler : base_handler_t {
     if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
       throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
 
-    stat_t remotestat =  session.get(remote_file, tmpfile.handle());
+    stat_t remotestat;
+    webdav.get(remote_file, &tmpfile);
     remotestat.perms = action.remote.perms;
 
     if (remotestat.perms) {
@@ -192,7 +198,8 @@ struct conflict_handler : base_handler_t {
     }
     
     if (remotestat.empty()) {
-      remotestat.merge(session.head(remote_file));
+//       remotestat.merge(webdav.head(remote_file));
+      remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
     }
     
     action_processor_t::resolve_ctx ctx = {
@@ -207,11 +214,14 @@ struct conflict_handler : base_handler_t {
       QFile::remove(tmppath); 
       
       const stat_t localstat(local_file);
-      remotestat.merge(session.set_permissions(remote_file, localstat.perms));
+//       remotestat.merge(
+        webdav.setPermissions(remote_file, localstat.perms);
+//       );
       remotestat.perms = localstat.perms;
       
       if (remotestat.empty()) {
-        remotestat.merge(session.head(remote_file));
+//         remotestat.merge(session.head(remote_file));
+        remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
       }
       
       database::entry_t e = db->create(action.key, localstat, remotestat, false);
@@ -238,7 +248,7 @@ struct conflict_handler : base_handler_t {
           localstat,
           remotestat);
         
-        local_change_handler()(session, db, act);
+        local_change_handler()(webdav, db, act);
       }
       else {
         qDebug() << "Can't resolve conflict!";
@@ -250,7 +260,7 @@ struct conflict_handler : base_handler_t {
 };
 
 struct remove_local_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(!action.local.empty());   // local MUST exists - sanity check
         Q_ASSERT(action.remote.empty()); // remote MUST not exists - for ETag compare   
     }
@@ -275,7 +285,7 @@ struct remove_local_handler : base_handler_t {
         return dir.rmdir(path);
     }
     
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO << action;
         const QString local_file = db->storage().absolute_file_path(action.key);
         
@@ -294,7 +304,7 @@ struct remove_local_handler : base_handler_t {
 };
 
 struct remove_remote_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(action.local.empty()); // local MUST not exists - for changes compare 
 //         Q_ASSERT(!action.remote.empty()); // remote MUST exists - sanity
     
@@ -302,29 +312,32 @@ struct remove_remote_handler : base_handler_t {
 
 
     
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO;
         const QString remote_file = db->storage().remote_file_path(action.key);
         
-        session.remove(remote_file);
+        webdav.remove(remote_file);
         db->remove(action.key);
         return Actions();
     }
 };
 
 struct upload_dir_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(!action.local.empty()); // local MUST exists - sanity
         Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity
     }
     
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
       qDebug() << Q_FUNC_INFO;
       const QString local_file = db->storage().absolute_file_path(action.key);
       const QString remote_file = db->storage().remote_file_path(action.key);
       
-      stat_t remotestat = session.mkcol(remote_file);
-      remotestat.merge(session.set_permissions(remote_file, action.local.perms));
+      stat_t remotestat;
+      webdav.mkcol(remote_file);
+//       remotestat.merge(
+        webdav.setPermissions(remote_file, action.local.perms);
+//       );
       remotestat.perms = action.local.perms;
 
       remotestat.size = 0;
@@ -357,12 +370,12 @@ struct upload_dir_handler : base_handler_t {
 };
 
 struct download_dir_handler : base_handler_t {
-    void do_check(session_t& session, database_p& db, const action_t& action) const {
+    void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(action.local.empty()); // local MUST not exists - sanity
         Q_ASSERT(action.remote.mtime || (action.remote.size == -1)); // remote MUST exists - sanity
     }
     
-    Actions do_request(session_t& session, database_p& db, const action_t& action) const {
+    Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
         qDebug() << Q_FUNC_INFO;
         
         const QString local_file = db->storage().absolute_file_path(action.key);
@@ -384,18 +397,18 @@ struct download_dir_handler : base_handler_t {
         
         Actions result;
         
-        Q_FOREACH(const remote_res_t& resource, session.get_resources(remote_file)) {
+        Q_FOREACH(const QWebdavUrlInfo& resource, webdav.parse(webdav.list(remote_file))) {
             
-            if (action.key == db->key(resource.path)) continue;
+            if (action.key == db->key(resource.name())) continue;
             
             action_t act(
                 action_t::error,
-                db->key(resource.path),
+                db->key(resource.name()),
                 stat_t(),
                 stat_t(resource)
             );              
             
-            if (resource.dir) {
+            if (resource.isDir()) {
               act.type = action_t::download_dir;
             }
             else {
@@ -407,8 +420,8 @@ struct download_dir_handler : base_handler_t {
     }
 };
 
-action_processor_t::action_processor_t(session_t& session, database_p db, action_processor_t::Comparer comparer, action_processor_t::Resolver resolver)
-    : session_(session)
+action_processor_t::action_processor_t(QWebdav& webdav, database_p db, action_processor_t::Comparer comparer, action_processor_t::Resolver resolver)
+    : webdav_(webdav)
     , db_(db)
 {
     
@@ -423,11 +436,12 @@ action_processor_t::action_processor_t(session_t& session, database_p db, action
         
         {action_t::upload_dir, upload_dir_handler()},
         {action_t::download_dir, download_dir_handler()},
-        {action_t::unchanged, [] (session_t& session, database_p db, const action_t& action) {return Actions();}},
+        {action_t::unchanged, [] (QWebdav& webdav, database_p db, const action_t& action) {return Actions();}},
         {action_t::conflict, conflict_handler(comparer, resolver)},
-//         {action_t::error, [] (session_t& session, database::database_t& db, const action_t& action) {
-//             throw qt_exception_t(QObject::tr("Action precondition failed"));
-//         }}
+        {action_t::error, [this] (QWebdav& webdav, database_p db, const action_t& action) {
+            throw qt_exception_t(QObject::tr("Action precondition failed"));
+            return Actions();
+        }}
     };
 }
 
@@ -436,7 +450,7 @@ void action_processor_t::process(const action_t& action)
     auto h = handlers_.find(action.type);
     if (h != handlers_.end()) {
         debug() << QString("processing action: %1 [%2]").arg(action.type_text()).arg(action.key);
-        Actions actions = h->second(session_, db_, action);
+        Actions actions = h->second(webdav_, db_, action);
         if (!actions.isEmpty()) {
           Q_EMIT new_actions(actions);
         }

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <QObject>
+#include <QUrl>
 
 #include "database/database.h"
 #include "types.h"
@@ -18,6 +19,7 @@ public:
     quint32 port;
     QString login;
     QString password;
+    QUrl    url;
   };
   
   explicit manager_t(database_p db, connection conn);

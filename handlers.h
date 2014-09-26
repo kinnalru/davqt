@@ -9,13 +9,13 @@
 #include "database/database.h"
 
 struct base_handler_t {
-    virtual void do_check(session_t& session, database_p& db, const action_t& action) const = 0;
-    virtual Actions do_request(session_t& session, database_p& db, const action_t& action) const = 0;
+    virtual void do_check(QWebdav& webdav, database_p& db, const action_t& action) const = 0;
+    virtual Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const = 0;
     
-    inline Actions operator() (session_t& session, database_p db, const action_t& action) const {
+    inline Actions operator() (QWebdav& webdav, database_p db, const action_t& action) const {
         try {
-            do_check(session, db, action);
-            return do_request(session, db, action);
+            do_check(webdav, db, action);
+            return do_request(webdav, db, action);
         }
         catch (std::runtime_error& e) {
             throw qt_exception_t(QObject::tr("Action state error: ") + e.what());
@@ -37,7 +37,7 @@ public:
     typedef std::function<bool (resolve_ctx&)> Comparer; //used to compare files for equality    
     typedef std::function<bool (resolve_ctx&)> Resolver; //used to merge conflict files
     
-    action_processor_t(session_t& session, database_p db, Comparer comparer = Comparer(), Resolver resolver = Resolver());
+    action_processor_t(QWebdav& webdav, database_p db, Comparer comparer = Comparer(), Resolver resolver = Resolver());
     virtual ~action_processor_t(){};
     
     void process(const action_t& action);
@@ -46,8 +46,8 @@ Q_SIGNALS:
   void new_actions(const Actions&);
 
 private:
-    session_t& session_;
+    QWebdav& webdav_;
     database_p db_;
-    std::map<action_t::type_e, std::function<Actions (session_t&, database_p db, const action_t&)>> handlers_;
+    std::map<action_t::type_e, std::function<Actions (QWebdav&, database_p db, const action_t&)>> handlers_;
 };
 

@@ -20,15 +20,11 @@ find_package(Boost REQUIRED COMPONENTS
 )
 include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(Qt4 REQUIRED QtCore QtNetwork QtGui)
+find_package(Qt4 REQUIRED QtCore QtNetwork QtXml QtGui)
 include(${QT_USE_FILE})
 
-
-#add_subdirectory(3rdparty/webdav/openssl)
-#add_subdirectory(3rdparty/webdav/libxml2)
-#add_subdirectory(3rdparty/webdav/neon)
-
 add_subdirectory(3rdparty/preferences)
+add_subdirectory(3rdparty//qtwebdav)
 
 set(HEADERS
     database/database.h
@@ -87,6 +83,7 @@ set(RESOURCES
 set(DEPS
 	#    ${CMAKE_BINARY_DIR}/lib/libneon.a 
 	#    ${CMAKE_BINARY_DIR}/lib/libxml2.a 
+  qtwebdav
 	neon
 )
 

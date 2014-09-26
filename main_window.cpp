@@ -23,6 +23,9 @@
 #include <QProgressBar>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
 #include <QMessageBox>
 #include <qprogressdialog.h>
 #include <QProcess>
@@ -193,7 +196,8 @@ void main_window_t::restart()
     url.host(),
     url.port(),
     settings().username(),
-    settings().password()
+    settings().password(),
+    url
   };
   
   p_->manager.reset(new manager_t(p_->db, conn));
@@ -299,6 +303,34 @@ void main_window_t::sync()
 
 void main_window_t::force_sync()
 {
+/*  
+  QNetworkRequest request(url);
+  
+  QString concatenated = "kinnalru:malder22";
+  QByteArray data = concatenated.toLocal8Bit().toBase64();
+  QString headerData = "Basic " + data;
+  request.setRawHeader("Authorization", headerData.toLocal8Bit());
+  
+//   QNetworkReply* reply = na->head(request);
+  
+  QNetworkReply* reply = na->get(request);
+  
+  QEventLoop loop;
+
+  reply->ignoreSslErrors();
+  
+  connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+  
+  loop.exec();
+  
+  qDebug() << "Error:" << reply->errorString();
+  qDebug() << "Header1:" << reply->header(QNetworkRequest::ContentTypeHeader);
+  qDebug() << "Header2:" << reply->header(QNetworkRequest::LastModifiedHeader);
+  qDebug() << "RawHeader:" << reply->rawHeaderPairs();
+  qDebug() << "data:" << reply->readAll();*/
+
+   
+  
   if (p_->manager.get() && p_->manager->busy()) return;
   
   set_state(syncing);

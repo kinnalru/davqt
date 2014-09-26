@@ -12,6 +12,7 @@
 #include <QMetaObject>
 #include <QMetaEnum>
 #include <boost/concept_check.hpp>
+#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
 
 /// describes state of local resource
 typedef QFileInfo local_res_t;
@@ -58,6 +59,9 @@ struct stat_t {
         size = -1;
       }
     }
+    
+    stat_t(const QWebdavUrlInfo& info)
+      : mtime(info.lastModified().toTime_t()), perms(info.filePermissions()), size(info.size()) {}
         
     stat_t(const remote_res_t& info)
         : mtime(info.mtime), perms(info.perms), size(info.size) {}
