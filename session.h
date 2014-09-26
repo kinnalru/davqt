@@ -25,8 +25,10 @@
 
 #include <QObject>
 
-#include "types.h"
 
+
+#include "types.h"
+/*
 class session_t : public QObject
 {
     Q_OBJECT
@@ -74,7 +76,7 @@ private:
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
-};
+};*/
 
 
 #endif // DAVQT_SESSION_H

@@ -190,10 +190,10 @@ const bool self_test = [] () {
 
     Q_ASSERT(entry.key == "tmp");
     
-    Q_ASSERT(entry.local.mtime == entry.remote.mtime);
-    Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());
-    Q_ASSERT(entry.local.size == info.size());
-    Q_ASSERT(entry.local.perms == info.permissions());
+    Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
+    Q_ASSERT(entry.local.lastModified() == info.lastModified());
+    Q_ASSERT(entry.local.size() == info.size());
+    Q_ASSERT(entry.local.permissions() == info.permissions());
   }
   
   {
@@ -215,10 +215,10 @@ const bool self_test = [] () {
 
     Q_ASSERT(entry.key == "sub1/sub2/file");
     
-    Q_ASSERT(entry.local.mtime == entry.remote.mtime);
-    Q_ASSERT(entry.local.mtime == info.lastModified().toTime_t());
-    Q_ASSERT(entry.local.size == info.size());
-    Q_ASSERT(entry.local.perms == info.permissions());
+    Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
+    Q_ASSERT(entry.local.lastModified() == info.lastModified());
+    Q_ASSERT(entry.local.size() == info.size());
+    Q_ASSERT(entry.local.permissions() == info.permissions());
     
     Q_ASSERT(fs.entries().first().key == "sub1");
     Q_ASSERT(fs.entries().last().key == "tmp");

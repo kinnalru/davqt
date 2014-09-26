@@ -35,15 +35,15 @@
 class QWebdavUrlInfo : public QUrlInfo
 {
  public:
-  QWebdavUrlInfo ();
-  QWebdavUrlInfo ( const QDomElement & dom );
-  QWebdavUrlInfo ( const QWebdavUrlInfo & wui );
+  QWebdavUrlInfo();
+  QWebdavUrlInfo(const QDomElement & dom);
+  QWebdavUrlInfo(const QWebdavUrlInfo & wui);
 
   virtual ~QWebdavUrlInfo ();
  private:
   int codeFromResponse( const QString & response );
   QDateTime parseDateTime( const QString& input, const QString& type );
-  void davParsePropstats(const QString & path, const QDomNodeList & propstats, const QDomNode& node);
+  void davParsePropstats(const QString & path, const QDomNodeList& propstats, const QDomNode& node);
 
  public:
   void setCreatedAt(const QDateTime & date);
@@ -52,7 +52,6 @@ class QWebdavUrlInfo : public QUrlInfo
   void setContentLanguage(const QString & lang);
   void setEntitytag(const QString & etag);
   void setMimeType(const QString & mime);
-  void setFilePermissions(quint32 perms);
 
   QDateTime createdAt() const;
   QString displayName() const;
@@ -60,12 +59,10 @@ class QWebdavUrlInfo : public QUrlInfo
   QString contentLanguage() const;
   QString entityTag() const;
   QString mimeType() const;
-  QFile::Permissions filePermissions() const;;
 
   const QWebdav::PropValues & properties() const;
  private:
 
-//   QDomNode node_;
   QWebdav::PropValues properties_;
   QDateTime createdAt_;
   QString displayName_;
@@ -73,14 +70,12 @@ class QWebdavUrlInfo : public QUrlInfo
   QString contentLanguage_;
   QString entityTag_;
   QString mimeType_;
-  QFile::Permissions filePersmissions_;
 };
 
 
 inline QDebug operator<<(QDebug dbg, const QWebdavUrlInfo &info)
 {
-  dbg.nospace() << "#QWebdavUrlInfo(" << info.displayName() << "[" << info.source() << "]" << "<" << info.properties() << ">" << ")";
-  dbg.nospace() << info.name();
+  dbg.nospace() << "WebDavUrlInfo[" << info.name() << "]";
   return dbg.space();
 }
 

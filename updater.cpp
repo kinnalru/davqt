@@ -279,24 +279,21 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
     Q_FOREACH(const auto entry, snap.to_upload) {
       blank_actions << action_t(
         action_t::upload,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
+        p_->db->key(folder + "/" + entry)
       );
     }
     
     Q_FOREACH(const auto entry, snap.to_download) {
       blank_actions << action_t(
         action_t::download,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
+        p_->db->key(folder + "/" + entry)
       );
     }
     
     Q_FOREACH(const auto entry, snap.to_compare) {
       blank_actions << action_t(
         action_t::compare,
-        p_->db->key(folder + "/" + entry),
-        stat_t(), stat_t()
+        p_->db->key(folder + "/" + entry)
       );
     }
   }
@@ -304,16 +301,14 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
     Q_FOREACH(const auto entry, snap.to_upload) {
       blank_actions << action_t(
         action_t::upload_dir,
-        p_->db->key(entry),
-        stat_t(), stat_t()
+        p_->db->key(entry)
       );
     }
     
     Q_FOREACH(const auto entry, snap.to_download) {
       blank_actions << action_t(
         action_t::download_dir,
-        p_->db->key(entry),
-        stat_t(), stat_t()
+        p_->db->key(entry)
       );
     }
     
@@ -327,24 +322,21 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
   Q_FOREACH(const auto entry, snap.to_forgot) {
     blank_actions << action_t(
       action_t::forgot,
-      p_->db->key(entry),
-      stat_t(), stat_t()
+      p_->db->key(entry)
     );
   }
   
   Q_FOREACH(const auto entry, snap.to_remove_local) {
     blank_actions << action_t(
       action_t::remove_local,
-      p_->db->key(entry),
-      stat_t(), stat_t()
+      p_->db->key(entry)
     );
   }
   
   Q_FOREACH(const auto entry, snap.to_remove_remote) {
     blank_actions << action_t(
       action_t::remove_remote,
-      p_->db->key(entry),
-      stat_t(), stat_t()
+      p_->db->key(entry)
     );
   }
   
@@ -357,25 +349,25 @@ Actions updater_t::fill(Actions actions) const
     debug() << action_t::type_text(it->type);
     switch(it->type) {
       case action_t::upload:
-        it->local = stat_t(p_->local_cache.at(it->key)); break;
+        it->local = p_->local_cache.at(it->key); break;
       case action_t::download:
-        it->remote = stat_t(p_->remote_cache.at(it->key)); 
+        it->remote = p_->remote_cache.at(it->key); 
         break;
       case action_t::compare:
 //             qdebug() << QMap<QString, QFileInfo>(p_->local_storage).keys();
-        it->local  = stat_t(p_->local_cache.at(it->key));
-        it->remote = stat_t(p_->remote_cache.at(it->key));
+        it->local  = p_->local_cache.at(it->key);
+        it->remote = p_->remote_cache.at(it->key);
         it->type = compare(*it);
          break;
       case action_t::forgot: break;
       case action_t::remove_local:
-        it->local  = stat_t(p_->local_cache.at(it->key)); break;
+        it->local  = p_->local_cache.at(it->key); break;
       case action_t::remove_remote: 
-        it->remote  = stat_t(p_->remote_cache.at(it->key)); break;
+        it->remote  = p_->remote_cache.at(it->key); break;
       case action_t::upload_dir:
-        it->local = stat_t(p_->local_cache.at(it->key)); break;
+        it->local = p_->local_cache.at(it->key); break;
       case action_t::download_dir:
-        it->remote = stat_t(p_->remote_cache.at(it->key)); break;
+        it->remote = p_->remote_cache.at(it->key); break;
       default:
         Q_ASSERT(!"Unhandled action type in blank_actions");
     }
@@ -389,42 +381,42 @@ action_t::type_e updater_t::compare(const action_t& action) const {
   
   const database::entry_t db_entry = p_->db->get(action.key);
   
-  const stat_t lstat = action.local;
-  const stat_t rstat = action.remote;
-  const stat_t dlstat = db_entry.local;
-  const stat_t drstat = db_entry.remote;
+  const UrlInfo lstat = action.local;
+  const UrlInfo rstat = action.remote;
+  const UrlInfo dlstat = db_entry.local;
+  const UrlInfo drstat = db_entry.remote;
    
   action_t::TypeMask mask = 0;
   
-  if (dlstat.mtime != lstat.mtime) {
+  if (dlstat.lastModified() != lstat.lastModified()) {
       mask |= action_t::local_changed;
-      debug() << " -> local time changed:" << QDateTime::fromTime_t(dlstat.mtime) << " -> " << QDateTime::fromTime_t(lstat.mtime);
+      debug() << " -> local time changed:" << dlstat.lastModified() << " -> " << lstat.lastModified();
   }
   
-  if (dlstat.size != lstat.size) {
+  if (dlstat.size() != lstat.size()) {
       mask |= action_t::local_changed;
-      debug() << " -> local size changed:" << dlstat.size << " -> " << lstat.size;
+      debug() << " -> local size changed:" << dlstat.size() << " -> " << lstat.size();
   }
   
-  if (dlstat.perms != lstat.perms) {
+  if (dlstat.permissions() != lstat.permissions()) {
       mask |= action_t::local_changed;
-      debug() << " -> local permissions changed:" << dlstat.perms << " -> " << lstat.perms;
+      debug() << " -> local permissions changed:" << dlstat.permissions() << " -> " << lstat.permissions();
   }
   
   
-  if (drstat.mtime != rstat.mtime) {
+  if (drstat.lastModified() != rstat.lastModified()) {
       mask |= action_t::remote_changed;
-      debug() << " -> remote time changed:" << QDateTime::fromTime_t(drstat.mtime) << " -> " << QDateTime::fromTime_t(rstat.mtime);
+      debug() << " -> remote time changed:" << drstat.lastModified() << " -> " << rstat.lastModified();
   }
   
-  if (drstat.size != rstat.size) {
+  if (drstat.size() != rstat.size()) {
       mask |= action_t::remote_changed;
-      debug() << " -> remote size changed:" << drstat.size << " -> " << rstat.size;
+      debug() << " -> remote size changed:" << drstat.size() << " -> " << rstat.size();
   }
   
-  if (drstat.perms != drstat.perms) {
+  if (drstat.permissions() != drstat.permissions()) {
       mask |= action_t::remote_changed;
-      debug() << " -> remote permissions changed:" << drstat.perms << " -> " << drstat.perms;
+      debug() << " -> remote permissions changed:" << drstat.permissions() << " -> " << drstat.permissions();
   }
   
 

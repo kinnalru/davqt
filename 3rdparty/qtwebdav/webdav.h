@@ -46,7 +46,7 @@ public:
   typedef QMap <QString, QMap <QString, QVariant>> PropValues;
   typedef QMap <QString, QStringList> PropNames;
 
-  QNetworkReply* setPermissions(const QString& path, QFile::Permissions perms);
+  QNetworkReply* setPermissions(const QString& path, int perms);
   
   QNetworkReply* list(const QString& dir);
   QNetworkReply* search(const QString& path, const QString& query);

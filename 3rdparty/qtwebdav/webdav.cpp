@@ -79,11 +79,11 @@ QWebdav::~QWebdav ()
 {
 }
 
-QNetworkReply* QWebdav::setPermissions(const QString& path, QFile::Permissions perms)
+QNetworkReply* QWebdav::setPermissions(const QString& path, int perms)
 {
   PropValues values;
   QMap<QString, QVariant> data;
-  data[properties[PERMISSIONS]] = static_cast<quint32>(perms);
+  data[properties[PERMISSIONS]] = perms;
   values["DAVQT:"] = data;
   
   return proppatch(path, values);

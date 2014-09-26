@@ -31,7 +31,7 @@
 #include "tools.h"
 
 typedef const QSet<QString> Filenames;
-
+/*
 QList<action_t> scan_and_compare(database_p db, session_t& session, const QString& localfolder, const QString& remotefolder);
 
 action_t::type_e compare(const db_entry_t& dbentry, const local_res_t& local, const remote_res_t& remote)
@@ -211,7 +211,7 @@ QList<action_t> handle_files(database_p db, const QString& localfolder, const QS
     }
 
     Q_FOREACH(const QString& file, snap.remote_added) {
-/*        const QString localfile = localfolder + "/" + file;
+        const QString localfile = localfolder + "/" + file;
         const QString remotefile = remotefolder + "/" + file;
         qDebug() << "unhandler remote file:" << file << " must be downloaded";
         
@@ -221,7 +221,7 @@ QList<action_t> handle_files(database_p db, const QString& localfolder, const QS
             localfile,
             remotefile,
             stat_t(),
-            *resource));  */        
+            *resource));          
     }
     
     return actions;
@@ -313,7 +313,7 @@ QList<action_t> handle_dirs(database_p db, session_t& session, const QString& lo
     }
     
     Q_FOREACH(const QString& file, snap.remote_added) {
-/*        const QString localdir = localfolder + "/" + file;
+        const QString localdir = localfolder + "/" + file;
         const QString remotedir = remotefolder + "/" + file;
         qDebug() << "unhandler remote dir:" << file << " must be downloaded";
         
@@ -323,7 +323,7 @@ QList<action_t> handle_dirs(database_p db, session_t& session, const QString& lo
             localdir,
             remotedir,
             stat_t(),
-            *resource));   */       
+            *resource));          
     }
     
     return actions;
@@ -340,9 +340,9 @@ QList<action_t> scan_and_compare(database_p db, session_t& session, const QStrin
     const QFileInfoList local_cache = [&] {
         QFileInfoList ret;
         Q_FOREACH(const QFileInfo& info, QDir(localfolder).entryInfoList(QDir::AllEntries | QDir::AllDirs | QDir::Hidden | QDir::System)) {
-//            /* if (db_t::skip(info.fileName())) continue;
-//             
-//             ret << info;*/
+            if (db_t::skip(info.fileName())) continue;
+            
+            ret << info;
         };    
         return ret;
     }();
@@ -716,7 +716,7 @@ void thread_manager_t::sync_thread()
 //                     ctx.result = ctx.local_old + ".merged" + db_t::tmpprefix;
 //                     return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
 //                 });
-/*            
+            
             do {
                 if (p_->stop) break;
                 if (p_->abort) break;
@@ -738,7 +738,7 @@ void thread_manager_t::sync_thread()
                 }
                 
                 current = action_completed(current, true);
-            } while (!current.empty());*/
+            } while (!current.empty());
         }
         catch (const std::exception& e) {
             Q_EMIT action_error(current, e.what());
@@ -747,7 +747,7 @@ void thread_manager_t::sync_thread()
     }
     QThread::currentThread()->quit();
 }
-
+*/
 
 
 

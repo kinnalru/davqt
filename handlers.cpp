@@ -17,8 +17,8 @@ namespace {
 
 struct upload_handler : base_handler_t {
   void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
-    Q_ASSERT(!action.local.empty()); // local contais NEW "fixed" file stat to upload.
-    Q_ASSERT(action.remote.empty()); // remote MUST not exists - sanity check
+    Q_ASSERT(!action.local.isValid()); // local contais NEW "fixed" file stat to upload.
+    Q_ASSERT(action.remote.isValid()); // remote MUST not exists - sanity check
     
 //     try {
 //       auto resources = webdav.list(action.key);
@@ -41,15 +41,15 @@ struct upload_handler : base_handler_t {
     if (!file.open(QIODevice::ReadOnly)) 
       throw qt_exception_t(QString("Can't open file %1: %2").arg(action.key).arg(file.errorString()));
     
-    stat_t remotestat;
+    UrlInfo remotestat;
     QReplyWaiter w1(webdav.put(remote_file, &file), true);
 //     remotestat.merge(
-    QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.perms), true);
+    QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.permissions()), true);
 //     );
-    remotestat.perms = action.local.perms;
+    remotestat.setPermissions(action.local.permissions());
 
     if (remotestat.empty()) {
-        remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
+        remotestat = UrlInfo(webdav.parse(webdav.list(remote_file)).first());
     }
     
     database::entry_t e = db->create(action.key, action.local, remotestat, false);
@@ -81,16 +81,16 @@ struct download_handler : base_handler_t {
     if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
       throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
     
-    stat_t remotestat;
+    UrlInfo remotestat;
     QReplyWaiter w1(webdav.get(remote_file, &tmpfile), true);
-    remotestat.perms = action.remote.perms;
+    remotestat.setPermissions(action.remote.permissions());
 
-    if (remotestat.perms) {
-      tmpfile.setPermissions(remotestat.perms);
+    if (remotestat.permissions()) {
+      tmpfile.setPermissions(QFile::Permissions(remotestat.permissions()));
     }
 
     if (remotestat.empty()) {
-      remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
+      remotestat = webdav.parse(webdav.list(remote_file)).first();
     }
 
     QFile::remove(local_file);
@@ -98,7 +98,7 @@ struct download_handler : base_handler_t {
     if (!tmpfile.rename(local_file))
       throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(local_file).arg(tmpfile.errorString()));   
 
-    const stat_t localstat(local_file);
+    const UrlInfo localstat(local_file);
     
     database::entry_t e = db->create(action.key, localstat, remotestat, false);
     db->put(e.key, e);
@@ -131,19 +131,19 @@ struct local_change_handler : upload_handler {
         qDebug() << Q_FUNC_INFO;
         
         database::entry_t e = db->get(action.key);
-        if (e.local.size == action.local.size &&
-            e.local.mtime == action.local.mtime &&
-            e.local.perms != action.local.perms)
+        if (e.local.size() == action.local.size() &&
+            e.local.lastModified() == action.local.lastModified() &&
+            e.local.permissions() != action.local.permissions())
         {
             const QString local_file = db->storage().absolute_file_path(action.key);
             const QString remote_file = db->storage().remote_file_path(action.key);      
             
-            stat_t remotestat;
-            QReplyWaiter w1(webdav.setPermissions(remote_file, action.local.perms), true);
-            remotestat.perms = action.local.perms;
+            UrlInfo remotestat;
+            QReplyWaiter w1(webdav.setPermissions(remote_file, action.local.permissions()), true);
+            remotestat.setPermissions(action.local.permissions());
 
             if (remotestat.empty()) {
-              remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
+              remotestat = webdav.parse(webdav.list(remote_file)).first();
             }
 
             database::entry_t e = db->create(action.key, action.local, remotestat, false);
@@ -189,17 +189,17 @@ struct conflict_handler : base_handler_t {
     if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
       throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
 
-    stat_t remotestat;
+    UrlInfo remotestat;
     QReplyWaiter w1(webdav.get(remote_file, &tmpfile), true);
-    remotestat.perms = action.remote.perms;
+    remotestat.setPermissions(action.remote.permissions());
 
-    if (remotestat.perms) {
-      tmpfile.setPermissions(remotestat.perms);
+    if (remotestat.permissions()) {
+      tmpfile.setPermissions(QFile::Permissions(remotestat.permissions()));
     }
     
     if (remotestat.empty()) {
 //       remotestat.merge(webdav.head(remote_file));
-      remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
+      remotestat = webdav.parse(webdav.list(remote_file)).first();
     }
     
     action_processor_t::resolve_ctx ctx = {
@@ -213,15 +213,15 @@ struct conflict_handler : base_handler_t {
       //File contents is same
       QFile::remove(tmppath); 
       
-      const stat_t localstat(local_file);
+      const UrlInfo localstat(local_file);
 //       remotestat.merge(
-        QReplyWaiter w1(webdav.setPermissions(remote_file, localstat.perms), true);
+        QReplyWaiter w1(webdav.setPermissions(remote_file, localstat.permissions()), true);
 //       );
-      remotestat.perms = localstat.perms;
+      remotestat.setPermissions(localstat.permissions());
       
       if (remotestat.empty()) {
 //         remotestat.merge(session.head(remote_file));
-        remotestat = stat_t(webdav.parse(webdav.list(remote_file)).first());
+        remotestat = webdav.parse(webdav.list(remote_file)).first();
       }
       
       database::entry_t e = db->create(action.key, localstat, remotestat, false);
@@ -237,8 +237,8 @@ struct conflict_handler : base_handler_t {
         if (!QFile::rename(ctx.result, local_file))
           throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result).arg(local_file));                       
 
-        QFile::setPermissions(local_file, action.local.perms);                
-        const stat_t localstat(local_file);
+        QFile::setPermissions(local_file, QFile::Permissions(action.local.permissions()));
+        const UrlInfo localstat(local_file);
 
         database::entry_t e = db->create(action.key, localstat, remotestat, false);
         db->put(e.key, e);
@@ -333,15 +333,15 @@ struct upload_dir_handler : base_handler_t {
       const QString local_file = db->storage().absolute_file_path(action.key);
       const QString remote_file = db->storage().remote_file_path(action.key);
       
-      stat_t remotestat;
+      UrlInfo remotestat;
       QReplyWaiter w1(webdav.mkcol(remote_file), true);
 //       remotestat.merge(
-        QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.perms), true);
+        QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.permissions()), true);
 //       );
-      remotestat.perms = action.local.perms;
+      remotestat.setPermissions(action.local.permissions());
 
-      remotestat.size = 0;
-      remotestat.mtime = 0;
+      remotestat.setSize(0);
+      remotestat.setLastModified(QDateTime());
 
       database::entry_t e = db->create(action.key, action.local, remotestat, true);
       db->put(e.key, e);
@@ -352,8 +352,7 @@ struct upload_dir_handler : base_handler_t {
         action_t act(
           action_t::error,
           db->key(info.absoluteFilePath()),
-          stat_t(info),
-          stat_t()
+          UrlInfo(info)
         );  
         
         if (info.isDir()) {
@@ -372,7 +371,7 @@ struct upload_dir_handler : base_handler_t {
 struct download_dir_handler : base_handler_t {
     void do_check(QWebdav& webdav, database_p& db, const action_t& action) const {
         Q_ASSERT(action.local.empty()); // local MUST not exists - sanity
-        Q_ASSERT(action.remote.mtime || (action.remote.size == -1)); // remote MUST exists - sanity
+//         Q_ASSERT(action.remote.mtime || (action.remote.size == -1)); // remote MUST exists - sanity
     }
     
     Actions do_request(QWebdav& webdav, database_p& db, const action_t& action) const {
@@ -384,13 +383,13 @@ struct download_dir_handler : base_handler_t {
         if (!QFileInfo(local_file).exists() && !QDir().mkdir(local_file))
             throw qt_exception_t(QString("Can't create dir: %1").arg(local_file));
 
-        if (action.remote.perms) {
-            QFile::setPermissions(local_file, action.remote.perms);
+        if (action.remote.permissions()) {
+            QFile::setPermissions(local_file, QFile::Permissions(action.remote.permissions()));
         }
 
-        stat_t localstat(local_file);
-        localstat.size = 0;
-        localstat.mtime = 0;
+        UrlInfo localstat(local_file);
+        localstat.setSize(0);
+        localstat.setLastModified(QDateTime());
 
         database::entry_t e = db->create(action.key, localstat, action.remote, true);
         db->put(e.key, e);
@@ -404,8 +403,8 @@ struct download_dir_handler : base_handler_t {
             action_t act(
                 action_t::error,
                 db->key(resource.name()),
-                stat_t(),
-                stat_t(resource)
+                UrlInfo(),
+                UrlInfo(resource)
             );              
             
             if (resource.isDir()) {

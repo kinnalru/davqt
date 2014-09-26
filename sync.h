@@ -26,7 +26,7 @@
 
 #include "types.h"
 #include "database/database.h"
-
+/*
 class thread_manager_t : public QObject {
     Q_OBJECT
 public:
@@ -70,7 +70,7 @@ private:
 private:
     struct Pimpl;
     std::unique_ptr<Pimpl> p_;
-};
+};*/
 
 /*
 class thread_pool_t : public QThreadPool {
@@ -152,7 +152,7 @@ Q_SIGNALS:
     
 public Q_SLOTS:
     void int_progress(qint64 prog, qint64 total) {
-        Q_EMIT progress(action_, prog, (total) ? total : (action_.local.size != -1) ? action_.local.size : action_.remote.size);
+        Q_EMIT progress(action_, prog, (total) ? total : (action_.local.size() != -1) ? action_.local.size() : action_.remote.size());
     }
 private:
     action_t action_;

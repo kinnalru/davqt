@@ -14,34 +14,50 @@
 #include <boost/concept_check.hpp>
 #include "3rdparty/qtwebdav/webdav_url_info.h"
 
-/// describes state of local resource
-typedef QFileInfo local_res_t;
-
-/// describes state of remote resource
-struct remote_res_t {
+struct UrlInfo : public QUrlInfo {
+  
+  UrlInfo() {check();};
+  UrlInfo(const UrlInfo& other) : QUrlInfo(other) {check();}
+  UrlInfo(const QUrlInfo& info) : QUrlInfo(info) {check();}
+  UrlInfo(const QFileInfo& info)
+    : QUrlInfo(
+      info.absoluteFilePath(),
+      info.permissions(), info.owner(), info.group(),
+      info.size(), info.lastModified(), info.lastRead(), 
+      info.isDir(), info.isFile(), info.isSymLink(),
+      info.isWritable(), info.isReadable(), info.isExecutable()
+    )
+  {
+    check();
+  }
     
-    remote_res_t() : size(-1), ctime(0), mtime(0) {}
+  UrlInfo(const QVariantMap& data) {
+    setName(data["name"].toString());
+    setLastModified(data["lastModified"].toDateTime());
+    setPermissions(data["permissions"].value<int>());
+    setSize(data["size"].value<quint64>());
+  }
     
-    QString path;   /* The unescaped path of the resource. */
-    QString name;   /* The name of the file or directory. Only the last
-                           component (no path), no slashes. */
-    QString etag;   /* The etag string, including quotation characters,
-                           but without the mark for weak etags. */
-    bool dir;
-                           
-    qint64 size;         /* File size in bytes (regular files only). */
-    time_t ctime;       /* Creation date. */
-    time_t mtime;       /* Date of last modification. */
-
-    QFile::Permissions perms;
+  inline QVariantMap dump() const {
+    QVariantMap data;
+    data["name"]  = name();
+    data["lastModified"] = lastModified();
+    data["permissions"] = static_cast<int>(permissions());
+    data["size"]  = size();
+    return data;
+  }
+  
+  bool empty() const {
+    return lastModified() == QDateTime() || size() == -1 || permissions() == 0;
+  }
+  
     
-    enum exec_e {
-        none,
-        executable,
-        not_executable,
-    } exec;
-    
-    inline bool empty() const {return path.isEmpty() && name.isEmpty();}
+private: 
+  void check() {
+    if (isDir() && !name().endsWith("/")) {
+      setName(name() + "/");
+    }
+  }
 };
 
 struct stat_t {
@@ -51,7 +67,7 @@ struct stat_t {
     stat_t()
         : mtime(0), size(-1), perms(0) {}
     
-    stat_t(const local_res_t& info)
+    stat_t(const QFileInfo& info)
       : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {
       if (!info.exists()) {
         mtime = 0;
@@ -61,11 +77,8 @@ struct stat_t {
     }
     
     stat_t(const QWebdavUrlInfo& info)
-      : mtime(info.lastModified().toTime_t()), perms(info.filePermissions()), size(info.size()) {}
+      : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
         
-    stat_t(const remote_res_t& info)
-        : mtime(info.mtime), perms(info.perms), size(info.size) {}
-    
     stat_t(const QVariantMap& data) {
         mtime = data["mtime"].toLongLong();
         perms = QFile::Permissions(data["perms"].toInt());
@@ -153,7 +166,7 @@ public:
     
     
     
-    action_t(type_e t, const QString& key, const stat_t& l, const stat_t& r)
+    action_t(type_e t, const QString& key, const UrlInfo& l = UrlInfo(), const UrlInfo& r = UrlInfo())
         : type(t), key(key), local(l), remote(r)
     {}
 
@@ -167,8 +180,8 @@ public:
     
     QString key;
     
-    stat_t local;
-    stat_t remote;
+    UrlInfo local;
+    UrlInfo remote;
 };
 
 inline QDebug operator<<(QDebug dbg, const action_t &a)

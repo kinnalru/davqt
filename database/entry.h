@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QVariant>
+#include "types.h"
 
 
 namespace database {
@@ -11,7 +12,6 @@ class database_t;
 struct entry_t {
   
   entry_t() : dir(false) {}
-  bool empty() const {return key.isEmpty() && local.empty() && remote.empty();}
   
   QVariantMap dump() const {
     QVariantMap ret;
@@ -24,15 +24,15 @@ struct entry_t {
   
   QString key;
   
-  stat_t local;    
-  stat_t remote;
+  UrlInfo local;    
+  UrlInfo remote;
   
   bool dir;
   
 private:
   friend class database::database_t;
   
-  entry_t(const QString& key, const stat_t& ls, const stat_t& rs, bool d)
+  entry_t(const QString& key, const UrlInfo& ls, const UrlInfo& rs, bool d)
     : key(key), local(ls), remote(rs), dir(d) {}
       
   entry_t(const QString& key, const QVariantMap& data)
@@ -40,8 +40,8 @@ private:
   {
     dir = data["dir"].value<bool>();
     
-    local = stat_t(data["local"].value<QVariantMap>());
-    remote = stat_t(data["remote"].value<QVariantMap>());
+    local = UrlInfo(data["local"].value<QVariantMap>());
+    remote = UrlInfo(data["remote"].value<QVariantMap>());
   }
 
 };

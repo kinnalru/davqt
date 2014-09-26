@@ -45,7 +45,7 @@
 #include "session.h"
 
 #define EUNKNOWN 99999
-
+/*
 enum {
     ETAG = 0,
     LENGTH,
@@ -611,5 +611,5 @@ stat_t session_t::mkcol(const QString& raw)
     }
     
     return ctx.stat;
-}
+}*/
 

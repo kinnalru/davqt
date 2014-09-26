@@ -35,10 +35,10 @@ QWebdavUrlInfo::QWebdavUrlInfo(const QDomElement & dom)
 {
   QDomElement href = dom.namedItem( "href" ).toElement();
 
-  if ( !href.isNull() )
+  if (!href.isNull())
   {
     QString urlStr = QUrl::fromPercentEncoding(href.text().toUtf8());
-    QDomNodeList propstats = dom.elementsByTagName( "propstat" );
+    QDomNodeList propstats = dom.elementsByTagName("propstat");
     davParsePropstats(urlStr, propstats, dom.cloneNode());
   }
 }
@@ -120,17 +120,11 @@ void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& 
 
       properties_[property.namespaceURI()][property.tagName()] = property.text();
 
-//       if (property.namespaceURI() != "DAV:") {
-//         //FIXME
-//         // break out - we're only interested in properties from the DAV namespace
-//         continue;
-//       }
-
       if (property.tagName() == "creationdate") {
         setCreatedAt(parseDateTime(property.text(), property.attribute("dt")));
       }
       else if (property.tagName() == "permissions") {
-        setFilePermissions(property.text().toUInt());
+        setPermissions(property.text().toUInt());
       }
       else if (property.tagName() == "getcontentlength") {
         setSize(property.text().toULong());
@@ -222,11 +216,6 @@ void QWebdavUrlInfo::setMimeType(const QString & mime)
   mimeType_ = mime;
 }
 
-void QWebdavUrlInfo::setFilePermissions(quint32 perms)
-{
-  filePersmissions_ = QFile::Permissions(perms);
-}
-
 QDateTime QWebdavUrlInfo::createdAt() const
 {
   return createdAt_;
@@ -260,10 +249,5 @@ QString QWebdavUrlInfo::mimeType() const
 const QWebdav::PropValues& QWebdavUrlInfo::properties() const
 {
   return properties_;
-}
-
-QFile::Permissions QWebdavUrlInfo::filePermissions() const
-{
-  return filePersmissions_;
 }
 
