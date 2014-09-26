@@ -161,7 +161,7 @@ Actions updater_t::update(QWebdav& webdav, const QString& folder)
       std::map<QString, QWebdavUrlInfo>(),
       [&] (std::map<QString, QWebdavUrlInfo>& result, const QWebdavUrlInfo& resource) {
         qDebug() << "Folder: " << folder;
-        qDebug() << "resource name: " << resource.name();
+        qDebug() << "resource name: " << resource.name() << "time: " << resource.lastModified();
         qDebug() << "key: " << p_->db->key(resource.name());
         if (resource.name() != ".") {
           result[p_->db->key(resource.name())] = resource;

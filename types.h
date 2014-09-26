@@ -23,7 +23,7 @@ struct UrlInfo : public QUrlInfo {
     : QUrlInfo(
       info.absoluteFilePath(),
       info.permissions(), info.owner(), info.group(),
-      info.size(), info.lastModified(), info.lastRead(), 
+      info.size(), info.lastModified().toUTC(), info.lastRead().toUTC(), 
       info.isDir(), info.isFile(), info.isSymLink(),
       info.isWritable(), info.isReadable(), info.isExecutable()
     )
@@ -48,7 +48,11 @@ struct UrlInfo : public QUrlInfo {
   }
   
   bool empty() const {
-    return lastModified() == QDateTime() || size() == -1 || permissions() == 0;
+    return (lastModified() == QDateTime()) || (size() == -1);
+  }
+  
+  bool ready() const {
+    return (lastModified() != QDateTime()) && (size() != -1) && (permissions() != 0);
   }
   
     
@@ -243,3 +247,26 @@ public:
     int code() const {return code_;}
 };
 
+class Package : public QObject {
+  Q_OBJECT
+    
+public:
+  template <typename F>
+  Package(QObject* recepient, const F& func, Qt::ConnectionType type = Qt::QueuedConnection)
+    : func_(func)
+  {
+    moveToThread(recepient->thread());
+    QMetaObject::invokeMethod(this, "fire", type);
+  }
+    
+  virtual ~Package() {};
+    
+private:
+  Q_SLOT void fire() 
+  {
+    if (func_) func_();
+    deleteLater();
+  }
+    
+  std::function<void()> func_;
+};

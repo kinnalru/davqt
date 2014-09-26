@@ -10,7 +10,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Debug)
     add_definitions(-DDEBUG)
 endif()
 
-add_definitions("-std=c++0x")
+add_definitions("-std=c++0x -std=c++11")
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -36,7 +36,7 @@ set(HEADERS
 )
 
 set(MOC
-    handlers.h
+    handlers/handlers.h
     main_window.h
     manager.h
     session.h
@@ -55,7 +55,7 @@ set(SOURCES
     database/database.cpp
     database/entry.cpp
     database/fs/fs.cpp
-    handlers.cpp
+    handlers/handlers.cpp
     main.cpp
     main_window.cpp
     manager.cpp

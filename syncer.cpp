@@ -2,7 +2,7 @@
 #include <QWaitCondition>
 #include <QProcess>
 
-#include "handlers.h"
+#include "handlers/handlers.h"
 #include "tools.h"
 #include "syncer.h"
 
@@ -42,82 +42,76 @@ syncer_t::~syncer_t()
 
 void syncer_t::run()
 {
-  qDebug() << "Sync thread started";  
-  Q_EMIT started();
-  try {
-    
-    QWebdav webdav(p_->conn.url);
-              
-    if (p_->stop) throw stop_exception_t();
-    
-//     Q_VERIFY(connect(this, SIGNAL(stopping()), &session, SLOT(cancell()), Qt::DirectConnection));
+//   qDebug() << "Sync thread started";  
+//   Q_EMIT started();
+//   try {
 //     
-//     session.set_auth(p_->conn.login, p_->conn.password);
-//     session.set_ssl();
-//     session.open();
-    
-    if (p_->stop) throw stop_exception_t();
-    
-    progress_adapter_t adapter;
-
-//     Q_VERIFY(connect(&session, SIGNAL(get_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
-//     Q_VERIFY(connect(&session, SIGNAL(put_progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+//     QWebdav webdav(p_->conn.url);
+//               
+//     if (p_->stop) throw stop_exception_t();
+//     
+//     if (p_->stop) throw stop_exception_t();
+//     
+//     progress_adapter_t adapter;
+// 
+//     Q_VERIFY(connect(&webdav, SIGNAL(progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
+//     Q_VERIFY(connect(&webdav, SIGNAL(progress(qint64,qint64)), &adapter, SLOT(int_progress(qint64,qint64))));
 //     Q_VERIFY(connect(&adapter, SIGNAL(progress(action_t,qint64,qint64)), this, SIGNAL(progress(action_t,qint64,qint64))));
-    
-    action_processor_t processor(webdav, p_->db,
-        [] (action_processor_t::resolve_ctx& ctx) {
-            return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
-        },
-        [] (action_processor_t::resolve_ctx& ctx) {
-            ctx.result = ctx.local_old + ".merged" + storage_t::tmpsuffix;
-            return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
-        });
-    
-    Q_VERIFY(connect(&processor, SIGNAL(new_actions(Actions)), this, SIGNAL(new_actions(Actions))));
-    
-    Q_FOREVER {
-      action_t current;
-      if (!QMetaObject::invokeMethod(&p_->manager, "next_sync_action", Qt::BlockingQueuedConnection, Q_RETURN_ARG(action_t, current))) {
-          throw std::runtime_error("Can't dequeue next action to sync");
-      }
-      if (p_->stop) throw stop_exception_t();
-      
-      if (current.empty()) {
-        if (p_->finish) break;
-        p_->available.wait(&p_->mx);
-        if (p_->finish) break;
-        if (p_->stop) throw stop_exception_t();
-        continue;
-      }
-      
-      adapter.set_action(current);
-      
-      try {
-        Q_EMIT action_started(current);      
-        processor.process(current);
-        if (p_->stop) throw stop_exception_t();       
-        Q_EMIT action_success(current);
-      }
-      catch (const stop_exception_t& e) {
-        throw;
-      }      
-      catch(const std::exception& e) {
-        if (p_->stop) throw stop_exception_t();   
-        Q_EMIT action_error(current, e.what());
-      }
-    }
-
-  }
-  catch (const stop_exception_t& e) {
-    qDebug() << "Sync thread force to stop";
-  }
-  catch (const std::exception& e) {
-    qDebug() << "Sync thread exception:" << e.what();
-    Q_EMIT error(e.what());
-  }
-
-  qDebug() << "Sync thread finished";
-  Q_EMIT finished();
+//     
+//     action_processor_t processor(p_->db, p_->manager,
+//         [] (action_processor_t::resolve_ctx& ctx) {
+//             return !QProcess::execute(QString("diff"), QStringList() << ctx.local_old << ctx.remote_new);
+//         },
+//         [] (action_processor_t::resolve_ctx& ctx) {
+//             ctx.result = ctx.local_old + ".merged" + storage_t::tmpsuffix;
+//             return !QProcess::execute(QString("kdiff3"), QStringList() << "-o" << ctx.result << ctx.local_old << ctx.remote_new);
+//         });
+//     
+//     Q_VERIFY(connect(&processor, SIGNAL(new_actions(Actions)), this, SIGNAL(new_actions(Actions))));
+//     
+//     Q_FOREVER {
+//       action_t current;
+//       if (!QMetaObject::invokeMethod(&p_->manager, "next_sync_action", Qt::BlockingQueuedConnection, Q_RETURN_ARG(action_t, current))) {
+//           throw std::runtime_error("Can't dequeue next action to sync");
+//       }
+//       if (p_->stop) throw stop_exception_t();
+//       
+//       if (current.empty()) {
+//         if (p_->finish) break;
+//         p_->available.wait(&p_->mx);
+//         if (p_->finish) break;
+//         if (p_->stop) throw stop_exception_t();
+//         continue;
+//       }
+//       
+//       adapter.set_action(current);
+//       
+//       try {
+//         Q_EMIT action_started(current);
+//         processor.process(current);
+//         if (p_->stop) throw stop_exception_t();       
+//         Q_EMIT action_success(current);
+//       }
+//       catch (const stop_exception_t& e) {
+//         throw;
+//       }      
+//       catch(const std::exception& e) {
+//         if (p_->stop) throw stop_exception_t();   
+//         Q_EMIT action_error(current, e.what());
+//       }
+//     }
+// 
+//   }
+//   catch (const stop_exception_t& e) {
+//     qDebug() << "Sync thread force to stop";
+//   }
+//   catch (const std::exception& e) {
+//     qDebug() << "Sync thread exception:" << e.what();
+//     Q_EMIT error(e.what());
+//   }
+// 
+//   qDebug() << "Sync thread finished";
+//   Q_EMIT finished();
 }
 
 void syncer_t::stop()

@@ -40,31 +40,35 @@ class QWebdav : public QNetworkAccessManager
 {
   Q_OBJECT
 public:
-  QWebdav(const QUrl& url, QObject* parent = 0);
+  
+  enum Type {
+    Sync,
+    Async
+  };
+  
+  QWebdav(const QUrl& url, QObject* parent = 0, QWebdav::Type type = Sync);
   ~QWebdav();
 
   typedef QMap <QString, QMap <QString, QVariant>> PropValues;
   typedef QMap <QString, QStringList> PropNames;
 
+  QWebdavUrlInfo info(const QString& path);
   QNetworkReply* setPermissions(const QString& path, int perms);
   
   QNetworkReply* list(const QString& dir);
   QNetworkReply* search(const QString& path, const QString& query);
   QNetworkReply* put(const QString& path, QByteArray& data);
   QNetworkReply* put(const QString& path, QIODevice* data);
-    QNetworkReply* get(const QString& path, QIODevice* device);
+  QNetworkReply* get(const QString& path, QIODevice* device);
 
   QNetworkReply* mkcol(const QString & dir);
 
-  QNetworkReply* mkdir( const QString & dir);
-  QNetworkReply* copy ( const QString & oldname, const QString & newname,
-	     bool overwrite = false );
-  QNetworkReply* rename ( const QString & oldname, const QString & newname,
-	       bool overwrite = false );
-  QNetworkReply* move ( const QString & oldname, const QString & newname,
-	     bool overwrite = false );
-  QNetworkReply* rmdir ( const QString & dir );
-  QNetworkReply* remove (const QString & path);
+  QNetworkReply* mkdir(const QString& dir);
+  QNetworkReply* copy(const QString& oldname, const QString& newname, bool overwrite = false);
+  QNetworkReply* rename(const QString& oldname, const QString& newname, bool overwrite = false);
+  QNetworkReply* move(const QString& oldname, const QString& newname, bool overwrite = false);
+  QNetworkReply* rmdir(const QString& dir);
+  QNetworkReply* remove(const QString& path);
 
   QNetworkReply* propfind ( const QString & path, const QByteArray & query, int depth = 0 );
   QNetworkReply* propfind ( const QString & path, const QWebdav::PropNames & props,
@@ -77,11 +81,15 @@ public:
 
   QList<QWebdavUrlInfo> parse(QNetworkReply* reply);
   
- private slots:
+Q_SIGNALS:
+  void progress(qint64 bytesProcessed, qint64 bytesTotal);
+  
+private Q_SLOTS:
   void int_finished(QNetworkReply* resp);
   void read_get_data();
+  void authenticate(QNetworkReply*,QAuthenticator*);
 
- private:
+private:
   void emitListInfos();
   void davParsePropstats( const QDomNodeList & propstat );
   int codeFromResponse( const QString& response );
@@ -93,40 +101,15 @@ public:
   void setupHeaders(QNetworkRequest & req, quint64 size);
   
   QUrl mkurl(const QString& path) const;
+  QNetworkReply* waitIfSync(QNetworkReply* reply);
+  
 
- private:
-  Q_DISABLE_COPY(QWebdav);
-  const QUrl url_;
-};
-
-class QReplyWaiter : public QObject{
-  Q_OBJECT
-public:
-  QReplyWaiter(QNetworkReply* reply, bool wait = false) {
-    connect(reply, SIGNAL(finished()), SLOT(finished()));
-    if (wait) {loop_.exec();}
-  }
-  
-  virtual ~QReplyWaiter() {}
-  
-  int wait() { return loop_.exec(); }
-  
-  QNetworkReply* reply() const {return reply_;}
-  
-private Q_SLOTS:
-  void finished() {
-    QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
-    
-    if (reply->error() != QNetworkReply::NoError) {
-      loop_.exit(-1);
-    } else {
-      loop_.exit(0);
-    }
-  }
 private:
-  QNetworkReply* reply_;
-  QEventLoop loop_;
+  Q_DISABLE_COPY(QWebdav);
+  QUrl url_;
+  const Type type_;
 };
+
 
 
 #endif // QWEBDAV_H

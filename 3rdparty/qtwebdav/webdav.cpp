@@ -25,6 +25,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QNetworkAccessManager>
+#include <QAuthenticator>
 #include <QBuffer>
 #include <QStringList>
 #include <QEventLoop>
@@ -67,16 +68,34 @@ static const QMap<Property, QString> properties = [] {
   return v;
 }();
 
-QWebdav::QWebdav(const QUrl& url, QObject* parent)
+QWebdav::QWebdav(const QUrl& url, QObject* parent, QWebdav::Type type)
   : QNetworkAccessManager(parent)
   , url_(url)
+  , type_(type)
 {
+  url_.setPath("");
   qDebug() << "QWebdav: " << url;
   connect(this, SIGNAL(finished(QNetworkReply*)), this, SLOT(int_finished(QNetworkReply*)));
+  connect(this, SIGNAL(authenticationRequired(QNetworkReply*,QAuthenticator*)), this, SLOT(authenticate(QNetworkReply*,QAuthenticator*)));
 }
 
 QWebdav::~QWebdav ()
 {
+}
+
+QWebdavUrlInfo QWebdav::info(const QString& dir)
+{
+  QWebdav::PropNames query;
+  
+  query["DAV:"] = properties.values();
+  query[""]     = properties.values();
+  
+  query["http://apache.org/dav/props/"] = QStringList() << properties[EXECUTE];
+  query["DAVQT:"] = QStringList() << properties[PERMISSIONS];
+  
+  QList<QWebdavUrlInfo> infos(parse(propfind(dir, query, 0)));
+  Q_ASSERT(infos.size() == 1);
+  return infos.first();
 }
 
 QNetworkReply* QWebdav::setPermissions(const QString& path, int perms)
@@ -86,8 +105,10 @@ QNetworkReply* QWebdav::setPermissions(const QString& path, int perms)
   data[properties[PERMISSIONS]] = perms;
   values["DAVQT:"] = data;
   
-  return proppatch(path, values);
+  qDebug() << "Webdav: set permission:" << perms;
+  qDebug() << values;
   
+  return proppatch(path, values);
 }
 
 
@@ -132,7 +153,9 @@ QNetworkReply* QWebdav::put(const QString& path, QIODevice* data)
   QNetworkRequest req;
   req.setUrl(mkurl(path));
 
-  return davRequest("PUT", req, data);
+  QNetworkReply* reply = davRequest("PUT", req, data);
+  connect(reply, SIGNAL(uploadProgress(qint64,qint64)), this, SIGNAL(progress(qint64,qint64)));
+  return reply;
 }
 
 QNetworkReply* QWebdav::get(const QString& path, QIODevice* device)
@@ -142,8 +165,9 @@ QNetworkReply* QWebdav::get(const QString& path, QIODevice* device)
   
   QNetworkReply* reply = QNetworkAccessManager::get(req);
   reply->setProperty("iodevice", reinterpret_cast<quint64>(device));
+  connect(reply, SIGNAL(downloadProgress(qint64,qint64)), this, SIGNAL(progress(qint64,qint64)));
   connect(reply, SIGNAL(readyRead()), this, SLOT(read_get_data()));
-  return reply;
+  return waitIfSync(reply);
 }
 
 
@@ -191,13 +215,14 @@ QNetworkReply* QWebdav::proppatch(const QString& path, const QWebdav::PropValues
   QByteArray query;
 
   query = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>";
-  query += "<D:proppatch xmlns:D=\"DAV:\" >";
-  query += "<D:prop>";
+  query += "<D:propertyupdate xmlns:D=\"DAV:\">";
+  query += "<D:set>";
   foreach (QString ns, props.keys())
   {
     QMap <QString , QVariant>::const_iterator i;
 
     for (i = props[ns].constBegin(); i != props[ns].constEnd(); ++i) {
+      query += "<D:prop>";
       if (ns == "DAV:") {
         query += "<D:" + i.key() + ">";
         query += i.value().toString();
@@ -205,12 +230,13 @@ QNetworkReply* QWebdav::proppatch(const QString& path, const QWebdav::PropValues
       } else {
         query += "<" + i.key() + " xmlns=\"" + ns + "\">";
         query += i.value().toString();
-        query += "</" + i.key() + " xmlns=\"" + ns + "\"/>";
+        query += "</" + i.key() + ">";
       }
+      query += "</D:prop>";
     }
   }
-  query += "</D:prop>";
-  query += "</D:propfind>";
+  query += "</D:set>";
+  query += "</D:propertyupdate>";
 
   return proppatch(path, query);
 }
@@ -256,6 +282,7 @@ QList<QWebdavUrlInfo> QWebdav::parse(QNetworkReply* reply)
 void QWebdav::int_finished(QNetworkReply* reply)
 {
   qDebug() << "reply on:" << reply->property("verb");
+  qDebug() << reply->rawHeaderPairs();
 }
 
 void QWebdav::read_get_data()
@@ -267,6 +294,13 @@ void QWebdav::read_get_data()
     }
   }
 }
+
+void QWebdav::authenticate(QNetworkReply*, QAuthenticator* auth)
+{
+  auth->setUser("kinnalru");
+  auth->setPassword("malder22");
+}
+
 
 void QWebdav::setupHeaders(QNetworkRequest& req, quint64 size)
 {
@@ -285,16 +319,16 @@ QNetworkReply* QWebdav::davRequest(const QString& verb, QNetworkRequest& req, co
   buffer->open(QIODevice::ReadOnly);
   QNetworkReply* reply = davRequest(verb, req, buffer); 
   connect(reply, SIGNAL(finished()), buffer, SLOT(deleteLater()));
-  return reply;
+  return waitIfSync(reply);
 }
 
 QNetworkReply* QWebdav::davRequest(const QString& verb, QNetworkRequest& req, QIODevice* data)
 {
-  qDebug() << "davRequest:" << req.url();
+  qDebug() << "davRequest[" << verb << "]:" << req.url();
   setupHeaders(req, data->size());
   QNetworkReply* reply = sendCustomRequest(req, verb.toUtf8(), data);
   reply->setProperty("verb", verb.toUtf8());
-  return reply;
+  return waitIfSync(reply);
 }
 
 QNetworkReply* QWebdav::mkcol(const QString & dir)
@@ -349,11 +383,31 @@ QNetworkReply* QWebdav::remove(const QString& path)
   return davRequest("DELETE", req);
 }
 
-
 QUrl QWebdav::mkurl(const QString& path) const
 {
   QUrl url(url_);
   url.setPath(url_.path() + "/" + path);
   return url;
 }
+
+QNetworkReply* QWebdav::waitIfSync(QNetworkReply* reply)
+{
+  if (type_ == Async) return reply;
+  if (reply->isFinished()) return reply;
+    
+  QEventLoop loop;
+  connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+  loop.exec();
+  
+  if (reply->error() != QNetworkReply::NoError) {
+    qDebug() << "Webdav Error:" << reply->errorString();
+    qDebug() << reply->rawHeaderPairs();
+    qDebug() << reply->readAll();
+    throw std::runtime_error(reply->errorString().toStdString().c_str());
+  }
+  
+  return reply;
+}
+
+
 

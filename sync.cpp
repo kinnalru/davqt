@@ -27,7 +27,7 @@
 #include <QWaitCondition>
 
 #include "sync.h"
-#include "handlers.h"
+#include "handlers/handlers.h"
 #include "tools.h"
 
 typedef const QSet<QString> Filenames;

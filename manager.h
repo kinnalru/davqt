@@ -8,6 +8,8 @@
 #include "database/database.h"
 #include "types.h"
 
+class handler_t;
+
 class manager_t : public QObject {
   Q_OBJECT
   Q_ENUMS(status_e)
@@ -26,6 +28,8 @@ public:
   virtual ~manager_t();
   
   bool busy() const;
+  
+  QWebdav* network() const;
   
 public Q_SLOTS:
   void start();  /// start updating and sync process
@@ -52,10 +56,18 @@ private Q_SLOTS:
 
 private:
   void start_update(); /// calculate tasks for sync
-  void start_sync();   /// sync   
+  void start_sync();   /// sync
+  handler_t* create_handler(const action_t& action);
+  
   Q_INVOKABLE action_t next_sync_action();
   
 private:
   struct Pimpl;
   std::unique_ptr<Pimpl> p_;
 };
+
+
+
+
+
+

@@ -27,6 +27,8 @@ struct manager_t::Pimpl {
   Actions actions;
   
   
+  std::unique_ptr<QWebdav> network;
+  
   int active_updaters;
   int active_syncers;
 };
@@ -37,6 +39,8 @@ manager_t::manager_t(database_p db, connection conn)
 {
   p_->db = db;
   p_->conn = conn;
+  
+  p_->network.reset(new QWebdav(conn.url, 0, QWebdav::Async));
   
   qDebug() << "[MANAGER]: using idealThreadCount:" << p_->thread_count;
 }
@@ -50,6 +54,12 @@ bool manager_t::busy() const
 {
   return p_->active_updaters || p_->active_syncers;
 }
+
+QWebdav* manager_t::network() const
+{
+  return p_->network.get();
+}
+
 
 void manager_t::start()
 {
@@ -82,45 +92,85 @@ void manager_t::start_update()
   QThreadPool::globalInstance()->start(updater);
 }
 
+#include "handlers/handlers.h"
+
 void manager_t::receive_new_actions(const Actions& actions)
 {
   Q_ASSERT(busy());
   Q_EMIT new_actions(actions);  
-  p_->actions << actions;
+//   p_->actions << actions;
+  
+  Q_FOREACH(auto action, actions) {
+    handler_t* handler = create_handler(action);
+    
+    Q_VERIFY(connect(handler, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
+    Q_VERIFY(connect(handler, SIGNAL(started(action_t)),               SIGNAL(action_started(action_t))));
+    Q_VERIFY(connect(handler, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
+    Q_VERIFY(connect(handler, SIGNAL(finished(action_t)),              SIGNAL(action_success(action_t))));
+    Q_VERIFY(connect(handler, SIGNAL(error(action_t, QString)),        SIGNAL(action_error(action_t,QString))));
+    Q_VERIFY(connect(handler, SIGNAL(error(action_t, QString)),        SLOT(stop())));
+
+    Q_VERIFY(connect(this, SIGNAL(need_stop()), handler,               SLOT(stop())));    
+    handler->setAutoDelete(true);
+    QThreadPool::globalInstance()->start(handler);
+  }
 }
 
 void manager_t::start_sync()
 {
-  Q_ASSERT(p_->active_updaters);
-  
-  for (int i = 0; i < (p_->thread_count - 1) ; ++i) {
-    auto syncer = new syncer_t(p_->db, p_->conn, *this);
-    syncer->setAutoDelete(true);
-    
-    Q_VERIFY(::connect(syncer, SIGNAL(started()), [this] {
-      p_->active_syncers++;
-    }, Qt::BlockingQueuedConnection));
-
-    Q_VERIFY(connect(syncer, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
-    Q_VERIFY(connect(syncer, SIGNAL(action_started(action_t)),        SIGNAL(action_started(action_t))));
-    Q_VERIFY(connect(syncer, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
-    Q_VERIFY(connect(syncer, SIGNAL(action_success(action_t)),        SIGNAL(action_success(action_t))));
-    Q_VERIFY(connect(syncer, SIGNAL(action_error(action_t,QString)),  SIGNAL(action_error(action_t,QString))));
-    Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SLOT(stop())));
-    Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SIGNAL(error(QString))));
-    
-    Q_VERIFY(::connect(syncer, SIGNAL(finished()), [this] {
-      p_->active_syncers--;
-      if (p_->active_syncers == 0) Q_EMIT finished();
-    }, Qt::BlockingQueuedConnection));
-    
-    Q_VERIFY(connect(this, SIGNAL(new_actions(Actions)), syncer,      SLOT(new_actions_available())));
-    Q_VERIFY(connect(this, SIGNAL(need_stop()), syncer,               SLOT(stop())));
-    Q_VERIFY(connect(this, SIGNAL(can_finish()), syncer,              SLOT(can_finish())));
-    
-    QThreadPool::globalInstance()->start(syncer);
-  }
+//   Q_ASSERT(p_->active_updaters);
+//   
+//   for (int i = 0; i < (p_->thread_count - 1) ; ++i) {
+//     auto syncer = new syncer_t(p_->db, p_->conn, *this);
+//     syncer->setAutoDelete(true);
+//     
+//     Q_VERIFY(::connect(syncer, SIGNAL(started()), [this] {
+//       p_->active_syncers++;
+//     }, Qt::BlockingQueuedConnection));
+// 
+//     Q_VERIFY(connect(syncer, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
+//     Q_VERIFY(connect(syncer, SIGNAL(action_started(action_t)),        SIGNAL(action_started(action_t))));
+//     Q_VERIFY(connect(syncer, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
+//     Q_VERIFY(connect(syncer, SIGNAL(action_success(action_t)),        SIGNAL(action_success(action_t))));
+//     Q_VERIFY(connect(syncer, SIGNAL(action_error(action_t,QString)),  SIGNAL(action_error(action_t,QString))));
+//     Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SLOT(stop())));
+//     Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SIGNAL(error(QString))));
+//     
+//     Q_VERIFY(::connect(syncer, SIGNAL(finished()), [this] {
+//       p_->active_syncers--;
+//       if (p_->active_syncers == 0) Q_EMIT finished();
+//     }, Qt::BlockingQueuedConnection));
+//     
+//     Q_VERIFY(connect(this, SIGNAL(new_actions(Actions)), syncer,      SLOT(new_actions_available())));
+//     Q_VERIFY(connect(this, SIGNAL(need_stop()), syncer,               SLOT(stop())));
+//     Q_VERIFY(connect(this, SIGNAL(can_finish()), syncer,              SLOT(can_finish())));
+//     
+//     QThreadPool::globalInstance()->start(syncer);
+//   }
 }
+
+handler_t* manager_t::create_handler(const action_t& action)
+{
+  switch(action.type) {
+    case action_t::upload:         return new upload_handler(p_->db, *this, action);
+    case action_t::download:       return new download_handler(p_->db, *this, action);
+    case action_t::forgot:         return new forgot_handler(p_->db, *this, action);
+    case action_t::remove_local:   return new remove_local_handler(p_->db, *this, action);
+    case action_t::remove_remote:  return new remove_remote_handler(p_->db, *this, action);
+    case action_t::local_changed:  return new local_change_handler(p_->db, *this, action);
+    case action_t::remote_changed: return new remote_change_handler(p_->db, *this, action);
+    
+    case action_t::upload_dir: return new remote_change_handler(p_->db, *this, action);
+    case action_t::download_dir: return new remote_change_handler(p_->db, *this, action);
+    case action_t::conflict: return new remote_change_handler(p_->db, *this, action);
+
+//     case action_t::upload_dir,   upload_dir_handler()},
+//     case action_t::download_dir, download_dir_handler()},
+//     case {action_t::unchanged, [] (QWebdav& webdav, database_p db, const action_t& action) {return Actions();}},
+//     case action_t::conflict, conflict_handler(comparer, resolver)},
+  };
+}
+
 
 void manager_t::stop()
 {

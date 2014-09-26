@@ -89,9 +89,9 @@ QDateTime QWebdavUrlInfo::parseDateTime(const QString& input, const QString& typ
 
 void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& propstats, const QDomNode& node)
 {
-  QString mimeType;
-  bool foundExecutable = false;
-  bool isDirectory = false;
+  bool dir_initialized = false;
+  bool exe_initialized = false;
+  bool executable = false;
 
   setName(path);
 
@@ -121,16 +121,25 @@ void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& 
       properties_[property.namespaceURI()][property.tagName()] = property.text();
 
       if (property.tagName() == "creationdate") {
-        setCreatedAt(parseDateTime(property.text(), property.attribute("dt")));
+        if (createdAt().isNull()) {
+          setCreatedAt(parseDateTime(property.text(), property.attribute("dt")));
+        }
       }
       else if (property.tagName() == "permissions") {
-        setPermissions(property.text().toUInt());
+        if (permissions() == 0) {
+          setPermissions(property.text().toUInt());
+        }
       }
       else if (property.tagName() == "getcontentlength") {
-        setSize(property.text().toULong());
+        qDebug() << "First size:" << size();
+        if (size() == -1) {
+          setSize(property.text().toULong());
+        }
       }
       else if( property.tagName() == "displayname") {
-        setDisplayName(property.text());
+        if (displayName().isNull()) {
+          setDisplayName(property.text());
+        }
       }
       else if (property.tagName() == "source") {
         QDomElement source;
@@ -138,30 +147,51 @@ void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& 
         source = property.namedItem( "link" ).toElement()
           .namedItem( "dst" ).toElement();
 
-        if (!source.isNull()) setSource(source.text());
+        if (!source.isNull()) {
+          if (this->source().isNull()) {
+            setSource(source.text());
+          }
+        }
       }
       else if (property.tagName() == "getcontentlanguage") {
-        setContentLanguage(property.text());
+        if (contentLanguage().isNull()) {
+          setContentLanguage(property.text());
+        }
       }
       else if (property.tagName() == "getcontenttype") {
-        if (property.text() == "httpd/unix-directory")
-          isDirectory = true;
-        else
-          mimeType = property.text();
+        if (property.text() == "httpd/unix-directory") {
+          if (!dir_initialized) {
+            dir_initialized = true;
+            setDir(true);
+          }
+        }
+        
+        if (this->mimeType().isNull()) {
+          setMimeType(property.text());
+        }
       }
       else if (property.tagName() == "executable")
       {
-        if (property.text() == "T") foundExecutable = true;
+        if (property.text() == "T") {
+          if (!exe_initialized) {
+            executable = true;
+          }
+        }
       }
       else if (property.tagName() == "getlastmodified") {
-        setLastModified(parseDateTime( property.text(), property.attribute("dt") ));
+        if (lastModified().isNull()) {
+          setLastModified(parseDateTime( property.text(), property.attribute("dt") ));
+        }
       }
       else if (property.tagName() == "getetag") {
-        setEntitytag(property.text());
+        if (entityTag().isNull()) {
+          setEntitytag(property.text());
+        }
       }
       else if (property.tagName() == "resourcetype") {
-        if (!property.namedItem("collection").toElement().isNull())
-          isDirectory = true;
+        if (!property.namedItem("collection").toElement().isNull()) {
+          setDir(true);
+        }
       }
       else {
         qDebug() << "Found unknown webdav property: " << property.tagName() << property.text();
@@ -169,19 +199,28 @@ void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& 
     }
     
   } 
-  setDir(isDirectory);
-  setFile(!isDirectory);
+  
+  setFile(!isDir());
 
-  if (isDirectory && !name().endsWith("/"))
+  if (isDir() && !name().endsWith("/"))
     setName(name() + "/");
 
-  if (foundExecutable || isDirectory)
-    setPermissions(0700);
-  else
-    setPermissions(0600);
-
-  if (!isDirectory && !mimeType.isEmpty())
-    setMimeType(mimeType);
+  if (permissions() == 0) {
+    setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ReadUser | QFile::WriteUser);
+    if (isDir()) {
+      QFile::Permissions perms(permissions());
+      setPermissions(perms | QFile::ExeUser | QFile::ExeOwner);
+    }
+  }
+  
+  
+  if (exe_initialized && executable) {
+    QFile::Permissions perms(permissions());
+    setPermissions(perms | QFile::ExeUser | QFile::ExeOwner);
+  }
+  if (isDir()) {
+    setMimeType(QString());
+  }
 
 }
 

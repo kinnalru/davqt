@@ -443,6 +443,7 @@ void main_window_t::action_started(const action_t& action)
 
 void main_window_t::action_success(const action_t& action)
 {
+  qDebug() << "123123123123";
   log(QString("Completed %1: %2").arg(action.type_text()).arg(action.key), action);
   auto it = find_item(p_->ui.actions, action.key);
   Q_ASSERT(it);
