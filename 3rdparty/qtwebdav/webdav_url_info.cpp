@@ -35,14 +35,12 @@ QWebdavUrlInfo::QWebdavUrlInfo(const QDomElement & dom)
 {
   QDomElement href = dom.namedItem( "href" ).toElement();
 
-  node_ = dom.cloneNode();
-
   if ( !href.isNull() )
-    {
-      QString urlStr = QUrl::fromPercentEncoding(href.text().toUtf8());
-      QDomNodeList propstats = dom.elementsByTagName( "propstat" );
-      davParsePropstats( urlStr, propstats );
-    }
+  {
+    QString urlStr = QUrl::fromPercentEncoding(href.text().toUtf8());
+    QDomNodeList propstats = dom.elementsByTagName( "propstat" );
+    davParsePropstats(urlStr, propstats, dom.cloneNode());
+  }
 }
 
 QWebdavUrlInfo::QWebdavUrlInfo (const QWebdavUrlInfo & wui)
@@ -55,7 +53,6 @@ QWebdavUrlInfo::QWebdavUrlInfo (const QWebdavUrlInfo & wui)
   , entityTag_(wui.entityTag_)
   , mimeType_(wui.mimeType_)
 {
-  node_ = wui.node_.cloneNode();
 }
 
 int QWebdavUrlInfo::codeFromResponse(const QString& response)
@@ -90,7 +87,7 @@ QDateTime QWebdavUrlInfo::parseDateTime(const QString& input, const QString& typ
   return QDateTime(date, time);
 }
 
-void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& propstats)
+void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& propstats, const QDomNode& node)
 {
   QString mimeType;
   bool foundExecutable = false;
@@ -258,11 +255,6 @@ QString QWebdavUrlInfo::entityTag() const
 QString QWebdavUrlInfo::mimeType() const
 {
   return mimeType_;
-}
-
-QDomElement QWebdavUrlInfo::propElement() const
-{
-  return node_.toElement();
 }
 
 const QWebdav::PropValues& QWebdavUrlInfo::properties() const

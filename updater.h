@@ -5,7 +5,7 @@
 #include <QObject>
 #include <QRunnable>
 
-#include "3rdparty/webdav/qtwebdav/webdav.h"
+#include "3rdparty/qtwebdav/webdav.h"
 
 #include "manager.h"
 

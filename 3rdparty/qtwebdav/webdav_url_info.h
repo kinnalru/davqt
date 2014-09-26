@@ -43,7 +43,7 @@ class QWebdavUrlInfo : public QUrlInfo
  private:
   int codeFromResponse( const QString & response );
   QDateTime parseDateTime( const QString& input, const QString& type );
-  void davParsePropstats(const QString & path, const QDomNodeList & propstat);
+  void davParsePropstats(const QString & path, const QDomNodeList & propstats, const QDomNode& node);
 
  public:
   void setCreatedAt(const QDateTime & date);
@@ -62,11 +62,10 @@ class QWebdavUrlInfo : public QUrlInfo
   QString mimeType() const;
   QFile::Permissions filePermissions() const;;
 
-  QDomElement propElement() const;
   const QWebdav::PropValues & properties() const;
  private:
 
-  QDomNode node_;
+//   QDomNode node_;
   QWebdav::PropValues properties_;
   QDateTime createdAt_;
   QString displayName_;

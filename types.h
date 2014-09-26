@@ -12,7 +12,7 @@
 #include <QMetaObject>
 #include <QMetaEnum>
 #include <boost/concept_check.hpp>
-#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
+#include "3rdparty/qtwebdav/webdav_url_info.h"
 
 /// describes state of local resource
 typedef QFileInfo local_res_t;

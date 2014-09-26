@@ -6,7 +6,7 @@
 #include "tools.h"
 #include "syncer.h"
 
-#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
+#include "3rdparty/qtwebdav/webdav_url_info.h"
 
 struct stop_exception_t : public std::runtime_error {
   stop_exception_t() : std::runtime_error("stop") {}

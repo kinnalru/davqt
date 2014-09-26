@@ -23,11 +23,13 @@
 
 #include <QNetworkAccessManager>
 #include <QUrlInfo>
+#include <QNetworkReply>
 #include <QUrl>
 #include <QDateTime>
 #include <QFile>
 #include <QDomNodeList>
 #include <QMap>
+#include <QEventLoop>
 
 class QWebdavUrlInfo;
 
@@ -50,7 +52,7 @@ public:
   QNetworkReply* search(const QString& path, const QString& query);
   QNetworkReply* put(const QString& path, QByteArray& data);
   QNetworkReply* put(const QString& path, QIODevice* data);
-  void get(const QString& path, QIODevice* data);
+    QNetworkReply* get(const QString& path, QIODevice* device);
 
   QNetworkReply* mkcol(const QString & dir);
 
@@ -75,12 +77,9 @@ public:
 
   QList<QWebdavUrlInfo> parse(QNetworkReply* reply);
   
-  /* TODO lock, unlock */
- signals:
-  void listInfo ( const QWebdavUrlInfo & i );
-
  private slots:
   void int_finished(QNetworkReply* resp);
+  void read_get_data();
 
  private:
   void emitListInfos();
@@ -97,9 +96,36 @@ public:
 
  private:
   Q_DISABLE_COPY(QWebdav);
-  bool emitListInfo;
-  QByteArray buffer;
   const QUrl url_;
+};
+
+class QReplyWaiter : public QObject{
+  Q_OBJECT
+public:
+  QReplyWaiter(QNetworkReply* reply, bool wait = false) {
+    connect(reply, SIGNAL(finished()), SLOT(finished()));
+    if (wait) {loop_.exec();}
+  }
+  
+  virtual ~QReplyWaiter() {}
+  
+  int wait() { return loop_.exec(); }
+  
+  QNetworkReply* reply() const {return reply_;}
+  
+private Q_SLOTS:
+  void finished() {
+    QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
+    
+    if (reply->error() != QNetworkReply::NoError) {
+      loop_.exit(-1);
+    } else {
+      loop_.exit(0);
+    }
+  }
+private:
+  QNetworkReply* reply_;
+  QEventLoop loop_;
 };
 
 

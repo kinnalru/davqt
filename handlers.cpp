@@ -42,9 +42,9 @@ struct upload_handler : base_handler_t {
       throw qt_exception_t(QString("Can't open file %1: %2").arg(action.key).arg(file.errorString()));
     
     stat_t remotestat;
-    webdav.put(remote_file, &file);
+    QReplyWaiter w1(webdav.put(remote_file, &file), true);
 //     remotestat.merge(
-    webdav.setPermissions(remote_file, action.local.perms);
+    QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.perms), true);
 //     );
     remotestat.perms = action.local.perms;
 
@@ -82,7 +82,7 @@ struct download_handler : base_handler_t {
       throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
     
     stat_t remotestat;
-    webdav.get(remote_file, &tmpfile);
+    QReplyWaiter w1(webdav.get(remote_file, &tmpfile), true);
     remotestat.perms = action.remote.perms;
 
     if (remotestat.perms) {
@@ -139,7 +139,7 @@ struct local_change_handler : upload_handler {
             const QString remote_file = db->storage().remote_file_path(action.key);      
             
             stat_t remotestat;
-            webdav.setPermissions(remote_file, action.local.perms);
+            QReplyWaiter w1(webdav.setPermissions(remote_file, action.local.perms), true);
             remotestat.perms = action.local.perms;
 
             if (remotestat.empty()) {
@@ -190,7 +190,7 @@ struct conflict_handler : base_handler_t {
       throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
 
     stat_t remotestat;
-    webdav.get(remote_file, &tmpfile);
+    QReplyWaiter w1(webdav.get(remote_file, &tmpfile), true);
     remotestat.perms = action.remote.perms;
 
     if (remotestat.perms) {
@@ -215,7 +215,7 @@ struct conflict_handler : base_handler_t {
       
       const stat_t localstat(local_file);
 //       remotestat.merge(
-        webdav.setPermissions(remote_file, localstat.perms);
+        QReplyWaiter w1(webdav.setPermissions(remote_file, localstat.perms), true);
 //       );
       remotestat.perms = localstat.perms;
       
@@ -316,7 +316,7 @@ struct remove_remote_handler : base_handler_t {
         qDebug() << Q_FUNC_INFO;
         const QString remote_file = db->storage().remote_file_path(action.key);
         
-        webdav.remove(remote_file);
+        QReplyWaiter w1(webdav.remove(remote_file), true);
         db->remove(action.key);
         return Actions();
     }
@@ -334,9 +334,9 @@ struct upload_dir_handler : base_handler_t {
       const QString remote_file = db->storage().remote_file_path(action.key);
       
       stat_t remotestat;
-      webdav.mkcol(remote_file);
+      QReplyWaiter w1(webdav.mkcol(remote_file), true);
 //       remotestat.merge(
-        webdav.setPermissions(remote_file, action.local.perms);
+        QReplyWaiter w2(webdav.setPermissions(remote_file, action.local.perms), true);
 //       );
       remotestat.perms = action.local.perms;
 

@@ -147,7 +147,7 @@ struct snapshot_data {
   Files to_remove_remote;
 };
 
-#include "3rdparty/webdav/qtwebdav/webdav_url_info.h"
+#include "3rdparty/qtwebdav/webdav_url_info.h"
 
 Actions updater_t::update(QWebdav& webdav, const QString& folder)
 {
@@ -160,7 +160,9 @@ Actions updater_t::update(QWebdav& webdav, const QString& folder)
     const auto remote_storage = std::accumulate(remotes.begin(), remotes.end(),
       std::map<QString, QWebdavUrlInfo>(),
       [&] (std::map<QString, QWebdavUrlInfo>& result, const QWebdavUrlInfo& resource) {
+        qDebug() << "Folder: " << folder;
         qDebug() << "resource name: " << resource.name();
+        qDebug() << "key: " << p_->db->key(resource.name());
         if (resource.name() != ".") {
           result[p_->db->key(resource.name())] = resource;
         }

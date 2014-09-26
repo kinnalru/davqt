@@ -161,6 +161,7 @@ void main_window_t::restart()
   if (p_->manager) {
     p_->manager->disconnect(this);
     p_->manager->stop();
+    p_->manager->wait();
     p_->manager.reset();
   }
   
