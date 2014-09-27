@@ -1,13 +1,15 @@
 
 #include <QThreadPool>
 #include <QPointer>
+#include <QProcess>
 
 #include "updater.h"
 #include "syncer.h"
 
 #include "tools.h"
 #include "manager.h"
-
+#include "handlers/handlers.h"
+#include "settings/settings.h"
 
 
 struct manager_t::Pimpl {
@@ -22,10 +24,6 @@ struct manager_t::Pimpl {
   database_p db;
   connection conn;
   const int thread_count;
-  
-  QMutex mx;
-  Actions actions;
-  
   
   std::unique_ptr<QWebdav> network;
   
@@ -70,13 +68,9 @@ void manager_t::start_update()
 {
   Q_ASSERT(!p_->active_updaters);
   
+  p_->active_updaters++;
   auto updater = new updater_t(p_->db, p_->conn);
   updater->setAutoDelete(true);
-  
-  Q_VERIFY(::connect(updater, SIGNAL(started()), [this] {
-    p_->active_updaters++;
-    start_sync();
-  }, Qt::BlockingQueuedConnection));
   
   Q_VERIFY(connect(updater, SIGNAL(new_actions(Actions)), SLOT(receive_new_actions(Actions))));
   Q_VERIFY(connect(updater, SIGNAL(error(QString)),       SLOT(stop())));
@@ -84,7 +78,9 @@ void manager_t::start_update()
   
   Q_VERIFY(::connect(updater, SIGNAL(finished()), [this] {
     p_->active_updaters--;
-    if (p_->active_updaters == 0)  Q_EMIT can_finish();
+    if (p_->active_syncers == 0 && p_->active_updaters == 0) {
+      Q_EMIT finished();
+    }
   }, Qt::BlockingQueuedConnection));
   
   Q_VERIFY(connect(this, SIGNAL(need_stop()), updater,    SLOT(stop())));
@@ -92,16 +88,17 @@ void manager_t::start_update()
   QThreadPool::globalInstance()->start(updater);
 }
 
-#include "handlers/handlers.h"
-
 void manager_t::receive_new_actions(const Actions& actions)
 {
   Q_ASSERT(busy());
   Q_EMIT new_actions(actions);  
-//   p_->actions << actions;
   
   Q_FOREACH(auto action, actions) {
     handler_t* handler = create_handler(action);
+    
+    if (!handler) continue;
+    
+    p_->active_syncers++;
     
     Q_VERIFY(connect(handler, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
     Q_VERIFY(connect(handler, SIGNAL(started(action_t)),               SIGNAL(action_started(action_t))));
@@ -109,44 +106,40 @@ void manager_t::receive_new_actions(const Actions& actions)
     Q_VERIFY(connect(handler, SIGNAL(finished(action_t)),              SIGNAL(action_success(action_t))));
     Q_VERIFY(connect(handler, SIGNAL(error(action_t, QString)),        SIGNAL(action_error(action_t,QString))));
     Q_VERIFY(connect(handler, SIGNAL(error(action_t, QString)),        SLOT(stop())));
-
+    
+    Q_VERIFY(connect(handler, SIGNAL(compare(conflict_ctx&,bool&)),    SLOT(compare(conflict_ctx&,bool&)), Qt::BlockingQueuedConnection));
+    Q_VERIFY(connect(handler, SIGNAL(merge(conflict_ctx&,bool&)),      SLOT(merge(conflict_ctx&,bool&)), Qt::BlockingQueuedConnection));
+    
     Q_VERIFY(connect(this, SIGNAL(need_stop()), handler,               SLOT(stop())));    
+    
+    Q_VERIFY(::connect(handler, SIGNAL(finished(action_t)), [this] {
+      p_->active_syncers--;
+      if (p_->active_syncers == 0 && p_->active_updaters == 0) {
+        Q_EMIT finished();
+      }
+    }, Qt::BlockingQueuedConnection));
+
     handler->setAutoDelete(true);
     QThreadPool::globalInstance()->start(handler);
   }
 }
 
-void manager_t::start_sync()
+void manager_t::compare(conflict_ctx& ctx, bool& result)
 {
-//   Q_ASSERT(p_->active_updaters);
-//   
-//   for (int i = 0; i < (p_->thread_count - 1) ; ++i) {
-//     auto syncer = new syncer_t(p_->db, p_->conn, *this);
-//     syncer->setAutoDelete(true);
-//     
-//     Q_VERIFY(::connect(syncer, SIGNAL(started()), [this] {
-//       p_->active_syncers++;
-//     }, Qt::BlockingQueuedConnection));
-// 
-//     Q_VERIFY(connect(syncer, SIGNAL(new_actions(Actions)),            SLOT(receive_new_actions(Actions))));
-//     Q_VERIFY(connect(syncer, SIGNAL(action_started(action_t)),        SIGNAL(action_started(action_t))));
-//     Q_VERIFY(connect(syncer, SIGNAL(progress(action_t,qint64,qint64)),SIGNAL(progress(action_t,qint64,qint64))));
-//     Q_VERIFY(connect(syncer, SIGNAL(action_success(action_t)),        SIGNAL(action_success(action_t))));
-//     Q_VERIFY(connect(syncer, SIGNAL(action_error(action_t,QString)),  SIGNAL(action_error(action_t,QString))));
-//     Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SLOT(stop())));
-//     Q_VERIFY(connect(syncer, SIGNAL(error(QString)),                  SIGNAL(error(QString))));
-//     
-//     Q_VERIFY(::connect(syncer, SIGNAL(finished()), [this] {
-//       p_->active_syncers--;
-//       if (p_->active_syncers == 0) Q_EMIT finished();
-//     }, Qt::BlockingQueuedConnection));
-//     
-//     Q_VERIFY(connect(this, SIGNAL(new_actions(Actions)), syncer,      SLOT(new_actions_available())));
-//     Q_VERIFY(connect(this, SIGNAL(need_stop()), syncer,               SLOT(stop())));
-//     Q_VERIFY(connect(this, SIGNAL(can_finish()), syncer,              SLOT(can_finish())));
-//     
-//     QThreadPool::globalInstance()->start(syncer);
-//   }
+  int code = QProcess::execute(settings().compare(), QStringList() << ctx.local_file << ctx.remote_file);
+  result = !code;
+  qDebug() << "merge result:" << code;
+}
+
+
+void manager_t::merge(conflict_ctx& ctx, bool& result)
+{
+  ctx.result_file = ctx.local_file + ".merged" + storage_t::tmpsuffix;
+  result = !QProcess::execute(settings().merge(), QStringList()
+    << "-o"
+    << ctx.result_file
+    << ctx.local_file
+    << ctx.remote_file);
 }
 
 handler_t* manager_t::create_handler(const action_t& action)
@@ -160,15 +153,14 @@ handler_t* manager_t::create_handler(const action_t& action)
     case action_t::local_changed:  return new local_change_handler(p_->db, *this, action);
     case action_t::remote_changed: return new remote_change_handler(p_->db, *this, action);
     
-    case action_t::upload_dir: return new remote_change_handler(p_->db, *this, action);
-    case action_t::download_dir: return new remote_change_handler(p_->db, *this, action);
-    case action_t::conflict: return new remote_change_handler(p_->db, *this, action);
-
-//     case action_t::upload_dir,   upload_dir_handler()},
-//     case action_t::download_dir, download_dir_handler()},
-//     case {action_t::unchanged, [] (QWebdav& webdav, database_p db, const action_t& action) {return Actions();}},
-//     case action_t::conflict, conflict_handler(comparer, resolver)},
+    case action_t::upload_dir:    return new upload_dir_handler(p_->db, *this, action);
+    case action_t::download_dir:  return new download_dir_handler(p_->db, *this, action);
+    case action_t::conflict:      return new conflict_handler(p_->db, *this, action);
+    
+    case action_t::error: throw qt_exception_t("Error action");
   };
+  
+  return 0;
 }
 
 
@@ -181,17 +173,4 @@ void manager_t::wait()
 {
   QThreadPool::globalInstance()->waitForDone();
 }
-
-
-action_t manager_t::next_sync_action()
-{
-  QMutexLocker lock(&p_->mx);
-  if (!p_->actions.isEmpty()) {
-    return p_->actions.takeLast();
-  }
-  else {
-    return action_t();
-  }
-}
-
 

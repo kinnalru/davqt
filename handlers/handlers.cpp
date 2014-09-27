@@ -26,7 +26,6 @@ void handler_t::run()
   catch (std::exception& e) {
       Q_EMIT error(action, e.what());
   }
-  qDebug() << "emit finished";
   Q_EMIT finished(action);
 }
 
@@ -34,18 +33,20 @@ QNetworkReply* handler_t::deliver_and_block(handler_t::synchro_reply_f f) const
 {
   QNetworkReply* reply = 0;
   
+  QEventLoop loop;
+  
   new Package(&manager, [&, this] () {
     reply = f(manager.network());
     if (reply) {
       reply->moveToThread(this->thread());
+      connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+      connect(this, SIGNAL(need_stop()), reply, SLOT(abort()));
       reply->setParent(const_cast<QObject*>(static_cast<const QObject*>(this)));
     }
   },
   Qt::BlockingQueuedConnection);
 
-  if (reply && !reply->isFinished()) {
-    QEventLoop loop;
-    connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+  if (reply) {
     loop.exec();
   }
   
@@ -76,6 +77,7 @@ void upload_handler::do_request() const {
   deliver_and_block([&] (QWebdav* webdav) {
     return webdav->put(remote_file, &file);
   });
+  file.flush();
   
   deliver_and_block([&] (QWebdav* webdav) {
     return webdav->setPermissions(remote_file, action.local.permissions());
@@ -115,7 +117,8 @@ void download_handler::do_request() const {
   deliver_and_block([&] (QWebdav* webdav) {
     return webdav->get(remote_file, &tmpfile);
   });
-
+  tmpfile.flush();
+  
   tmpfile.setPermissions(QFile::Permissions(action.remote.permissions()));
 
   const UrlInfo remote = deliver([&] (QWebdav* webdav) {
@@ -209,6 +212,7 @@ void conflict_handler::do_request() const {
     deliver_and_block([&] (QWebdav* webdav) {
       return webdav->get(remote_file, &tmpfile);
     });
+    tmpfile.flush();
   
     tmpfile.setPermissions(QFile::Permissions(action.remote.permissions()));
     
@@ -230,7 +234,7 @@ void conflict_handler::do_request() const {
     Q_EMIT compare(ctx, result);
     
     if (result) {
-//       File contents is same
+      //File contents is same
       QFile::remove(tmppath); 
       
       const UrlInfo local(local_file);
@@ -249,41 +253,38 @@ void conflict_handler::do_request() const {
       database::entry_t e = db->create(action.key, local, remote, false);
       db->put(e.key, e);
     } 
-//   else {
+  else {
     //File contents differs
-//     if (resolver_(ctx)) {
+    result = false;
+    Q_EMIT compare(ctx, result);
+    if (result) {
       //Files merged
-//       QFile::remove(tmppath); 
-//       QFile::remove(local_file);
+      QFile::remove(tmppath); 
+      QFile::remove(local_file);
       
-//       if (!QFile::rename(ctx.result, local_file))
-//         throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result).arg(local_file));                       
-// 
-//       qDebug() << "merged";
-//       QFile::setPermissions(local_file, QFile::Permissions(action.local.permissions()));
-//       qDebug() << "perms setted";
-//       const UrlInfo local(local_file);
-// 
-//       qDebug() << "db save";
-//         database::entry_t e = db->create(action.key, local, remote, false);
-//         db->put(e.key, e);
-//         
-//         Q_ASSERT(!local.isDir());
-//         Q_ASSERT(!remote.isDir());
+      if (!QFile::rename(ctx.result_file, local_file))
+        throw qt_exception_t(QString("Can't rename file %1 -> %2").arg(ctx.result_file).arg(local_file));                       
+
+      QFile::setPermissions(local_file, QFile::Permissions(action.local.permissions()));
+      const UrlInfo local(local_file);
+
+      database::entry_t e = db->create(action.key, local, remote, false);
+      db->put(e.key, e);
       
-//         const action_t act(action_t::local_changed,
-//           action.key,
-//           local,
-//           remote);
+      Q_ASSERT(!local.isDir());
+      Q_ASSERT(!remote.isDir());
+    
+      const action_t act(action_t::local_changed,
+        action.key,
+        local,
+        remote);
       
-//       qDebug() << "file merged succesful";
-//       //FIXME local_change_handler(db, manager, act)();
-//       qDebug() << "COMPLETE";
-//     }
-//     else {
-//       qDebug() << "Can't resolve conflict!";
-//     }
-//   }
+      Q_EMIT new_actions(Actions() << act);
+    }
+    else {
+      throw qt_exception_t("Can't resolve conflict!");
+    }
+  }
   
 }
 

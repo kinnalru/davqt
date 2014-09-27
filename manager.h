@@ -53,13 +53,13 @@ Q_SIGNALS:
   
 private Q_SLOTS:
   void receive_new_actions(const Actions& actions);
+  
+  void compare(conflict_ctx& ctx, bool& result);
+  void merge(conflict_ctx& ctx, bool& result);
 
 private:
   void start_update(); /// calculate tasks for sync
-  void start_sync();   /// sync
   handler_t* create_handler(const action_t& action);
-  
-  Q_INVOKABLE action_t next_sync_action();
   
 private:
   struct Pimpl;

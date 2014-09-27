@@ -64,74 +64,6 @@ private:
   }
 };
 
-struct stat_t {
-    stat_t(qlonglong m, QFile::Permissions p, quint64 s)
-        : mtime(m), perms(p), size(s) {}
-    
-    stat_t()
-        : mtime(0), size(-1), perms(0) {}
-    
-    stat_t(const QFileInfo& info)
-      : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {
-      if (!info.exists()) {
-        mtime = 0;
-        perms = 0;
-        size = -1;
-      }
-    }
-    
-    stat_t(const QWebdavUrlInfo& info)
-      : mtime(info.lastModified().toTime_t()), perms(info.permissions()), size(info.size()) {}
-        
-    stat_t(const QVariantMap& data) {
-        mtime = data["mtime"].toLongLong();
-        perms = QFile::Permissions(data["perms"].toInt());
-        size = data["size"].toULongLong();
-    }
-    
-    inline stat_t& merge(const stat_t& other) {
-        if (other.mtime != 0) mtime = other.mtime;
-        if (other.perms != 0) perms = other.perms;
-        if (other.size != -1) size = other.size;
-        return *this;
-    }
-    
-    inline bool empty() const {return mtime == 0 || size == -1;}
-    
-    inline QVariantMap dump() const {
-        QVariantMap data;
-        data["mtime"] = mtime;
-        data["perms"] = static_cast<int>(perms);
-        data["size"] = size;
-        return data;
-    }
-    
-    qlonglong mtime;
-    QFile::Permissions perms;
-    quint64 size;
-};
-
-/// describes last synx state of local and remote file
-struct db_entry_t {
-    
-    db_entry_t(const QString& r, const QString& f, const QString& n, const stat_t& ls, const stat_t& rs, bool d)
-        : root(r), folder(f), name(n), local(ls), remote(rs), dir(d), bad(false) {}
-    
-    db_entry_t() : dir(false), bad(false) {}
-    
-    bool empty() const {return root.isEmpty() && folder.isEmpty() && name.isEmpty() && local.empty() && remote.empty();}
-    
-    QString root;
-    QString folder;
-    QString name;
-    
-    stat_t local;    
-    stat_t remote;
-    
-    bool dir;
-    bool bad;
-};
-
 /// describes action needed to perform
 class action_t {
     Q_GADGET
@@ -188,16 +120,16 @@ public:
     UrlInfo remote;
 };
 
+struct conflict_ctx {
+  const action_t action;
+  QString local_file;
+  QString remote_file;
+  QString result_file;
+};
+
 inline QDebug operator<<(QDebug dbg, const action_t &a)
 {
     dbg.nospace() << "#action_t(" << "type:" << a.type_text() << ":" << a.key << ")";
-
-    return dbg.space();
-}
-
-inline QDebug operator<<(QDebug dbg, const stat_t &s)
-{
-    dbg.nospace() << "#stat_t(" << "mtime:" << QDateTime::fromTime_t(s.mtime) << " " << s.perms << " Size:" << s.size << ")";
 
     return dbg.space();
 }
