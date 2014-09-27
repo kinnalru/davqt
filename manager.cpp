@@ -4,7 +4,6 @@
 #include <QProcess>
 
 #include "updater.h"
-#include "syncer.h"
 
 #include "tools.h"
 #include "manager.h"
@@ -126,9 +125,7 @@ void manager_t::receive_new_actions(const Actions& actions)
 
 void manager_t::compare(conflict_ctx& ctx, bool& result)
 {
-  int code = QProcess::execute(settings().compare(), QStringList() << ctx.local_file << ctx.remote_file);
-  result = !code;
-  qDebug() << "merge result:" << code;
+  result = !QProcess::execute(settings().compare(), QStringList() << ctx.local_file << ctx.remote_file);
 }
 
 

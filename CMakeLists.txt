@@ -44,8 +44,6 @@ set(MOC
     settings/merge_settings.h
     settings/settings.h
     settings/sync_settings.h
-    sync.h    
-    syncer.h
     tools.h
     types.h
     updater.h
@@ -64,8 +62,6 @@ set(SOURCES
     settings/merge_settings.cpp
     settings/sync_settings.cpp
     storage.cpp
-    sync.cpp
-    syncer.cpp
     updater.cpp
 )
 

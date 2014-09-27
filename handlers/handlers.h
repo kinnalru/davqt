@@ -3,10 +3,10 @@
 #include <functional>
 
 #include <QObject>
+#include <QRunnable>
 
 #include "manager.h"
 #include "session.h"
-#include "sync.h"
 #include "database/database.h"
 
 class manager_t;

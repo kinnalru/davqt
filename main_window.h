@@ -22,10 +22,11 @@
 #define MAIN_WINDOW_H
 
 #include <memory>
+
 #include <QWidget>
 #include <QSystemTrayIcon>
 
-#include "sync.h"
+#include "types.h"
 
 class QTreeWidgetItem;
 

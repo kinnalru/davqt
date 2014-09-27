@@ -232,7 +232,6 @@ void conflict_handler::do_request() const {
     };
     
     Q_EMIT compare(ctx, result);
-    
     if (result) {
       //File contents is same
       QFile::remove(tmppath); 
@@ -256,7 +255,7 @@ void conflict_handler::do_request() const {
   else {
     //File contents differs
     result = false;
-    Q_EMIT compare(ctx, result);
+    Q_EMIT merge(ctx, result);
     if (result) {
       //Files merged
       QFile::remove(tmppath); 
