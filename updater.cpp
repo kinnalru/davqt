@@ -160,10 +160,11 @@ Actions updater_t::update(QWebdav& webdav, const QString& folder)
     const auto remote_storage = std::accumulate(remotes.begin(), remotes.end(),
       std::map<QString, QWebdavUrlInfo>(),
       [&] (std::map<QString, QWebdavUrlInfo>& result, const QWebdavUrlInfo& resource) {
-        qDebug() << "Folder: " << folder;
-        qDebug() << "resource name: " << resource.name() << "time: " << resource.lastModified();
-        qDebug() << "key: " << p_->db->key(resource.name());
-        if (resource.name() != ".") {
+        qDebug() << "Remote Folder: " << folder;
+        qDebug() << "Remote resource name: " << resource.name() << "time: " << resource.lastModified();
+        qDebug() << "Remote key: " << p_->db->key(resource.name());
+        if (resource.name() != "." && !QRegExp(QString("[/]*%1[/]*").arg(folder)).exactMatch(resource.name())) {
+          qDebug() << "ADD KEY";
           result[p_->db->key(resource.name())] = resource;
         }
 
@@ -172,18 +173,26 @@ Actions updater_t::update(QWebdav& webdav, const QString& folder)
     p_->remote_cache.insert(remote_storage.begin(), remote_storage.end());
     
     const auto locals = p_->db->storage().entries(lf);
+    qDebug() << " +======== Local:" << locals.size();
     const auto local_storage = std::accumulate(locals.begin(), locals.end(),
       std::map<QString, QFileInfo>(),
       [&] (std::map<QString, QFileInfo>& result, const QFileInfo& resource) {
+        qDebug() << "Local Folder: " << folder;
+        qDebug() << "Local resource name: " << resource.absoluteFilePath() << "time: " << resource.lastModified();
+        qDebug() << "Local key: " << p_->db->key(resource.absoluteFilePath());
         result[p_->db->key(resource.absoluteFilePath())] = resource;
         return result;
       });
     p_->local_cache.insert(local_storage.begin(), local_storage.end());    
 
     const auto dbs = p_->db->entries(lf);
+    qDebug() << " +======== DB:" << dbs.size();
     const auto db_storage = std::accumulate(dbs.begin(), dbs.end(),
       std::map<QString, database::entry_t>(),
       [&] (std::map<QString, database::entry_t>& result, const database::entry_t& resource) {
+        qDebug() << "DB Folder: " << folder;
+        qDebug() << "DB resource name: " << resource.key;
+        qDebug() << "DB key: " << p_->db->key(resource.key);
         result[resource.key] = resource;
         return result;
       });  

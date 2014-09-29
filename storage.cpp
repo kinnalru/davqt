@@ -99,6 +99,7 @@ QFileInfoList storage_t::entries(QString folder) const
   QFileInfoList result = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden, QDir::DirsFirst);
   result.erase(
     std::remove_if( std::begin(result), std::end(result), [] (const QFileInfo& info) {
+      qDebug() << "PP:" << info.absoluteFilePath();
       return info.fileName().endsWith(storage_t::tmpsuffix);
     }),
     std::end(result)

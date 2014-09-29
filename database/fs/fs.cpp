@@ -135,7 +135,11 @@ QList<database::entry_t> database::fs_t::entries(QString folder) const
   QList<entry_t> result;
   
   Q_FOREACH(const auto info, dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
-    if (info.isDir() || info.filePath() == ".davdb") continue;
+    qDebug() << "FS:" << info.absoluteFilePath();
+    if (info.isDir() || info.fileName() == ".davdb") continue;
+    qDebug() << "FS FILE:" << info.absoluteFilePath();
+    qDebug() << "FS GET:" << info.filePath().replace(".davdb", "");
+    qDebug() << "FS RESULT:" << info.filePath().replace(".davdb", "");
     result << get(info.filePath().replace(".davdb", ""));
   }
   
