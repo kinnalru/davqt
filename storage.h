@@ -19,7 +19,6 @@ struct storage_t {
   QString path() const;
   QString prefix() const;
   
-  QFileInfo info(const QString& file) const;
   
   /// Only filename without path
   QString file(const QString& file) const;
@@ -30,12 +29,20 @@ struct storage_t {
   /// Full path without root
   QString file_path(const QString& file) const;
   
-  QString absolute_file_path(const QString& file) const;
-  
   QString remote_file_path(const QString& file) const;
+  
+  QFileInfo local_info(const QString& key) const;
+  
+  std::unique_ptr<QFile> local_file(const QString& key) const;
+  std::unique_ptr<QFile> tmp_file(const QString& key) const;
+  
+  void fix_tmp_file(std::unique_ptr<QFile>& file, const QString& key) const;
   
   QFileInfoList entries(QString folder = QString()) const;
 
+// private:
+  QFileInfo info(const QString& file) const;
+  QString absolute_file_path(const QString& file) const;
   
 private:
   struct Pimpl;
