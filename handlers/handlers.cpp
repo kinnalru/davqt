@@ -68,14 +68,17 @@ void upload_handler::do_check() const {
 void upload_handler::do_request() const {
   qDebug() << Q_FUNC_INFO;
   
+  const QString local_file = db->storage().absolute_file_path(action.key);
   const QString remote_file = db->storage().remote_file_path(action.key);
   
-  auto file = db->storage().local_file(action.key);
-  
+  QFile file(local_file);
+  if (!file.open(QIODevice::ReadOnly)) 
+    throw qt_exception_t(QString("Can't open file %1: %2").arg(action.key).arg(file.errorString()));
+
   deliver_and_block([&] (QWebdav* webdav) {
-    return webdav->put(remote_file, file.get());
+    return webdav->put(remote_file, &file);
   });
-  file->flush();
+  file.flush();
   
   deliver_and_block([&] (QWebdav* webdav) {
     return webdav->setPermissions(remote_file, action.local.permissions());
@@ -100,25 +103,36 @@ void download_handler::do_check() const {
 void download_handler::do_request() const {
   qDebug() << Q_FUNC_INFO;
   
+  const QString local_file = db->storage().absolute_file_path(action.key);
   const QString remote_file = db->storage().remote_file_path(action.key);      
   
-  auto tmpfile =  db->storage().tmp_file(action.key);
+  const QString tmppath = local_file + storage_t::tmpsuffix;
+  
+  if (QFileInfo(tmppath).exists())
+    throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg("file exists!"));
+
+  QFile tmpfile(tmppath);
+  if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
+    throw qt_exception_t(QString("Can't create file %1: ").arg(tmppath).arg(tmpfile.errorString()));
   
   deliver_and_block([&] (QWebdav* webdav) {
-    return webdav->get(remote_file, tmpfile.get());
+    return webdav->get(remote_file, &tmpfile);
   });
-  tmpfile->flush();
+  tmpfile.flush();
   
-  tmpfile->setPermissions(QFile::Permissions(action.remote.permissions()));
+  tmpfile.setPermissions(QFile::Permissions(action.remote.permissions()));
 
   const UrlInfo remote = deliver([&] (QWebdav* webdav) {
     return webdav->info(remote_file);
   });
   
   
-  db->storage().fix_tmp_file(tmpfile, action.key);
+  QFile::remove(local_file);
+  if (!tmpfile.rename(local_file))
+    throw qt_exception_t(QString("Can't rename file %1 -> %2: %3").arg(tmppath).arg(local_file).arg(tmpfile.errorString()));
   
-  const UrlInfo local(db->storage().local_info(action.key));
+  
+  const UrlInfo local(local_file);
   
   Q_ASSERT(!action.local.isDir());
   Q_ASSERT(!remote.isDir());
@@ -185,61 +199,61 @@ void conflict_handler::do_check() const {
   
 void conflict_handler::do_request() const {
   qDebug() << Q_FUNC_INFO;
-  
+
   const QString local_file = db->storage().absolute_file_path(action.key);
   const QString remote_file = db->storage().remote_file_path(action.key);      
-
+  
   Q_ASSERT(!QFileInfo(local_file).isDir());
   
   const QString tmppath = local_file + storage_t::tmpsuffix;
-    
+  
   QFile tmpfile(tmppath);
   if (!tmpfile.open(QIODevice::ReadWrite | QIODevice::Truncate)) 
-    throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));        
+    throw qt_exception_t(QString("Can't create file %1: %2").arg(tmppath).arg(tmpfile.errorString()));
+    
+  deliver_and_block([&] (QWebdav* webdav) {
+    return webdav->get(remote_file, &tmpfile);
+  });
+  tmpfile.flush();
 
-    deliver_and_block([&] (QWebdav* webdav) {
-      return webdav->get(remote_file, &tmpfile);
-    });
-    tmpfile.flush();
+  tmpfile.setPermissions(QFile::Permissions(action.remote.permissions()));
   
-    tmpfile.setPermissions(QFile::Permissions(action.remote.permissions()));
+  const UrlInfo remote = deliver([&] (QWebdav* webdav) {
+    return webdav->info(remote_file);
+  });
+
+  Q_ASSERT(!action.local.isDir());
+  Q_ASSERT(!remote.isDir());
+  
+  bool result = false;
+  conflict_ctx ctx = {
+    action,
+    local_file,
+    tmppath,
+    ""
+  };
+  
+  Q_EMIT compare(ctx, result);
+  if (result) {
+    //File contents is same
+    QFile::remove(tmppath); 
+    
+    const UrlInfo local(local_file);
+    
+    deliver_and_block([&] (QWebdav* webdav) {
+      return webdav->setPermissions(remote_file, local.permissions());
+    });
     
     const UrlInfo remote = deliver([&] (QWebdav* webdav) {
       return webdav->info(remote_file);
     });
-
-    Q_ASSERT(!action.local.isDir());
+    
+    Q_ASSERT(!local.isDir());
     Q_ASSERT(!remote.isDir());
     
-    bool result = false;
-    conflict_ctx ctx = {
-      action,
-      local_file,
-      tmppath,
-      ""
-    };
-    
-    Q_EMIT compare(ctx, result);
-    if (result) {
-      //File contents is same
-      QFile::remove(tmppath); 
-      
-      const UrlInfo local(local_file);
-      
-      deliver_and_block([&] (QWebdav* webdav) {
-        return webdav->setPermissions(remote_file, local.permissions());
-      });
-      
-      const UrlInfo remote = deliver([&] (QWebdav* webdav) {
-        return webdav->info(remote_file);
-      });
-      
-      Q_ASSERT(!local.isDir());
-      Q_ASSERT(!remote.isDir());
-      
-      database::entry_t e = db->create(action.key, local, remote, false);
-      db->put(e.key, e);
-    } 
+    database::entry_t e = db->create(action.key, local, remote, false);
+    db->put(e.key, e);
+  } 
   else {
     //File contents differs
     result = false;
