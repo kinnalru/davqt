@@ -25,7 +25,7 @@ struct storage_t {
   /// Only folder without root and filename
   QString folder(const QString& key) const;
   
-  /// Full path without prefix
+  /// Full path without root but with prefix
   QString file_path(const QString& key) const;
 
   QString absolute_file_path(const QString& key) const;

@@ -192,7 +192,7 @@ const bool self_test = [] () {
     fs.put("/tmp", fs.create("/tmp", info, info, false));
     auto entry = fs.get("/tmp");
 
-    Q_ASSERT(entry.key == "tmp");
+    Q_ASSERT(entry.key == "files/tmp");
     
     Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
     Q_ASSERT(entry.local.lastModified() == info.lastModified());
