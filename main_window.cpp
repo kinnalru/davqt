@@ -176,7 +176,7 @@ void main_window_t::restart()
     );
   
   p_->db.reset();
-  p_->storage.reset(new storage_t(settings().localfolder(), prefix));
+  p_->storage.reset(new storage_t(settings().localfolder(), prefix, settings().keep_structure()));
   p_->db.reset(new database::fs_t(*p_->storage, dbpath));
 
   if (!p_->db->initialized()) {

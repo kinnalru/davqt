@@ -7,7 +7,7 @@
 
 QString database::database_t::key(QString path) const
 {
-    return QString(storage().path() + QDir::separator() + storage().file_path(path)).replace(QRegExp("/$"), "").replace("//", "/");
+    return storage().key(path);
 }
 
 database::entry_t database::database_t::create(QString path, const UrlInfo& l, const UrlInfo& r, bool dir) const

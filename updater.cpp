@@ -156,6 +156,7 @@ Actions updater_t::update(QWebdav& webdav, const QString& folder)
     const QString lf = p_->db->key(folder);
     debug() << Q_FUNC_INFO << "Local:" << lf << " Remote:" << folder;
     
+//     const auto remotes = webdav.parse(webdav.list(p_->db->storage().remote_file_path(folder)));
     const auto remotes = webdav.parse(webdav.list(folder));
     const auto remote_storage = std::accumulate(remotes.begin(), remotes.end(),
       std::map<QString, QWebdavUrlInfo>(),
@@ -324,7 +325,7 @@ Actions updater_t::process(QSet<QString> db, QSet<QString> local, QSet<QString> 
     Q_FOREACH(const auto entry, snap.to_compare) {
       if (folder == entry) continue;
       
-      p_->folders << p_->db->key(entry);
+      p_->folders << p_->db->storage().remote_file_path(p_->db->key(entry));
     }
   }
 

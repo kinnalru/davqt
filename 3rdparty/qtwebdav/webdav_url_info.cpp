@@ -93,7 +93,7 @@ void QWebdavUrlInfo::davParsePropstats(const QString& path, const QDomNodeList& 
   bool exe_initialized = false;
   bool executable = false;
 
-  setName(path);
+  setName(QString(path).replace("//", "/"));
 
   for (int i = 0; i < propstats.count(); i++) {
     QDomElement propstat = propstats.item(i).toElement();

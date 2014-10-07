@@ -12,10 +12,14 @@ struct storage_t {
   
   static const QString tmpsuffix;
   
-  storage_t(const QString& root, const QString& path);
+  storage_t(const QString& root, const QString& path, bool keep_structure);
   ~storage_t();
 
 
+  QString key(QString path) const;
+  
+  bool keep_structure() const;
+  
   /// Full info about file
   QFileInfo info(QString key) const;  
   
@@ -25,7 +29,7 @@ struct storage_t {
   /// Only folder without root and filename
   QString folder(const QString& key) const;
   
-  /// Full path without root but with prefix
+  /// Full path without root
   QString file_path(const QString& key) const;
 
   QString absolute_file_path(const QString& key) const;

@@ -15,7 +15,7 @@ struct database_t {
   virtual ~database_t() {}
   
   virtual QString key(QString path) const;
-
+  
   virtual void put(const QString& key, const entry_t& entry) = 0;
   virtual entry_t get(const QString& key) const = 0;
   virtual void remove(const QString& key) = 0;

@@ -44,6 +44,7 @@ main_settings_t::main_settings_t(QWidget* parent)
     Q_VERIFY(connect(p_->ui.localfolder, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.username, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
     Q_VERIFY(connect(p_->ui.password, SIGNAL(textChanged(QString)), this, SLOT(int_changed())));
+    Q_VERIFY(connect(p_->ui.keep_structure, SIGNAL(clicked(bool)), this, SLOT(int_changed())));
 }
 
 main_settings_t::~main_settings_t()
@@ -59,6 +60,7 @@ void main_settings_t::update_preferences()
     p_->ui.host->setText(s.host());
     p_->ui.remotefolder->setText(s.remotefolder());
     p_->ui.localfolder->setText(s.localfolder());
+    p_->ui.keep_structure->setChecked(s.keep_structure());
     p_->ui.username->setText(s.username());
     p_->ui.password->setText(s.password());
     lock_change_ = false;
@@ -77,6 +79,7 @@ void main_settings_t::accept()
     s.set_host(p_->ui.host->text());
     s.set_remotefolder(p_->ui.remotefolder->text());
     s.set_localfolder(p_->ui.localfolder->text());
+    s.set_keep_structure(p_->ui.keep_structure->isChecked());
     s.set_username(p_->ui.username->text());
     s.set_password(p_->ui.password->text());
 }
@@ -91,6 +94,7 @@ void main_settings_t::reset_defaults()
     settings().reset_host();
     settings().reset_remotefolder();
     settings().reset_localfolder();
+    settings().reset_keep_structure();
     settings().reset_username();
     settings().reset_password();
     update_preferences();

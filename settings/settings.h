@@ -46,6 +46,7 @@ public:
     GENERATE_PARAM(interval, int, 0);
     GENERATE_PARAM(remotefolder, QString, "/");
     GENERATE_PARAM(localfolder, QString, settings_impl_t::data_path());
+    GENERATE_PARAM(keep_structure, bool, false);
     GENERATE_PARAM(enabled, bool, false);
     GENERATE_PARAM(last_sync, QDateTime, QDateTime());
     
@@ -65,6 +66,7 @@ Q_SIGNALS:
     void remotefolder_changed(const QString&);
     void localfolder_changed(const QString&);
     void enabled_changed(bool);
+    void keep_structure_changed(bool);
     void last_sync_changed(QDateTime);
     void compare_changed(const QString&);
     void merge_changed(const QString&);

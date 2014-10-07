@@ -89,7 +89,6 @@ QVariantMap to_map(QSettings& s) {
 
 database::entry_t database::fs_t::get(const QString& filepath) const
 {
-  debug() << "load entry:" << item(filepath) << "...";
   QMutexLocker lock(p_->mx);
   
   QSettings file(item(filepath), QSettings::IniFormat);
@@ -154,7 +153,7 @@ QString database::fs_t::item(QString path) const
 bool database::fs_t::initialized() const
 {
   QSettings file(p_->db.absoluteFilePath("") + ".davdb", QSettings::IniFormat);
-  return file.value("localstorage").toString() == storage().root();
+  return file.value("localstorage").toString() == storage().root() && file.value("keep_structure").toBool() == storage().keep_structure();
 }
 
 bool database::fs_t::set_initialized(bool v) const
@@ -162,9 +161,11 @@ bool database::fs_t::set_initialized(bool v) const
   QSettings file(p_->db.absoluteFilePath("") + ".davdb", QSettings::IniFormat);
   if (v) {
     file.setValue("localstorage", storage().root());
+    file.setValue("keep_structure", storage().keep_structure());
   }
   else {
     file.remove("localstorage");
+    file.remove("keep_structure");
   }
   file.sync();
 }
@@ -179,7 +180,7 @@ const bool self_test = [] () {
   {
     debug() << "Test 1";
     
-    storage_t storage("/tmp/davtest", "files");
+    storage_t storage("/tmp/davtest", "files", false);
     database::fs_t fs(storage, "/tmp/davtest/db");
     
     QFile f("/tmp/davtest/tmp");
@@ -192,7 +193,7 @@ const bool self_test = [] () {
     fs.put("/tmp", fs.create("/tmp", info, info, false));
     auto entry = fs.get("/tmp");
 
-    Q_ASSERT(entry.key == "files/tmp");
+    Q_ASSERT(entry.key == "tmp");
     
     Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
     Q_ASSERT(entry.local.lastModified() == info.lastModified());
@@ -203,7 +204,7 @@ const bool self_test = [] () {
   {
     debug() << "Test 2";
     
-    storage_t storage("/tmp/davtest", "files");
+    storage_t storage("/tmp/davtest", "files", false);
     database::fs_t fs(storage, "/tmp/davtest/db");
     
     QFile f("/tmp/davtest/tmp2");
@@ -219,6 +220,12 @@ const bool self_test = [] () {
 
     Q_ASSERT(entry.key == "sub1/sub2/file");
     
+    fs.put("files/sub1", fs.create("files/sub1", info, info, true));
+    fs.put("files/sub1/sub2/file", fs.create("files/sub1/sub2/file", info, info, false));
+    entry = fs.get("files/sub1/sub2/file");
+
+    Q_ASSERT(entry.key == "sub1/sub2/file");
+    
     Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
     Q_ASSERT(entry.local.lastModified() == info.lastModified());
     Q_ASSERT(entry.local.size() == info.size());
@@ -231,7 +238,44 @@ const bool self_test = [] () {
     fs.remove("/sub1/sub2/file");
   }
   
-   
+  {
+    debug() << "Test 3";
+    
+    storage_t storage("/tmp/davtest3", "files", true);
+    database::fs_t fs(storage, "/tmp/davtest3/db");
+    
+    QFile f("/tmp/davtest3/tmp2");
+    f.open(QIODevice::ReadWrite | QIODevice::Truncate);
+    f.write("12345");
+    f.close();
+    
+    QFileInfo info("/tmp/davtest3/tmp2");
+    
+    fs.put("/sub1", fs.create("/sub1", info, info, true));
+    fs.put("/sub1/sub2/file", fs.create("/sub1/sub2/file", info, info, false));
+    auto entry = fs.get("/sub1/sub2/file");
+
+    qDebug() << "key:" << entry.key;
+    Q_ASSERT(entry.key == "files/sub1/sub2/file");
+    
+    fs.put("files/sub1", fs.create("files/sub1", info, info, true));
+    fs.put("files/sub1/sub2/file", fs.create("files/sub1/sub2/file", info, info, false));
+    entry = fs.get("files/sub1/sub2/file");
+
+    Q_ASSERT(entry.key == "files/sub1/sub2/file");
+    
+    Q_ASSERT(entry.local.lastModified() == entry.remote.lastModified());
+    Q_ASSERT(entry.local.lastModified() == info.lastModified());
+    Q_ASSERT(entry.local.size() == info.size());
+    Q_ASSERT(entry.local.permissions() == info.permissions());
+
+    Q_ASSERT(fs.entries().first().key == "files/sub1");
+    Q_ASSERT(fs.entries().last().key == "files/sub1");
+    Q_ASSERT(fs.entries("sub1/sub2").first().key == "files/sub1/sub2/file");
+    
+    fs.remove("/sub1/sub2/file");
+  }
+
   
   return true;
 }();
