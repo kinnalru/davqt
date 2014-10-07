@@ -32,7 +32,6 @@ set(HEADERS
     database/entry.h
     database/fs/fs.h
     storage.h
-
 )
 
 set(MOC
@@ -63,6 +62,7 @@ set(SOURCES
     settings/sync_settings.cpp
     storage.cpp
     updater.cpp
+	tests/test.cpp
 )
 
 set(IFACES

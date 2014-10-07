@@ -39,7 +39,7 @@ struct storage_t {
   QFileInfoList entries(QString key = QString()) const;
 
 
-
+friend class storage_test;
 
 // private:
   /// Full root path of storage
